@@ -1,263 +1,89 @@
-# IIC-OSIC-TOOLS Analog Design Project Template (GlobalFoundries 180nm)
+# MatchMaker
 
-This repository is an analog design project template for the SSCS 2025 Chipathon (https://github.com/sscs-ose/sscs-chipathon-2025). The design environment is setup using the IIC-OSIC-TOOLS docker container (https://github.com/iic-jku/IIC-OSIC-TOOLS). The container is preconfigured with GlobalFoundries 180nm PDK (gf180mcuD).
+Common-centroid layout generation for matched analog structures in GF180 using gLayout.
 
-## What's Included
+MatchMaker is a Chipathon Track D project developed by Team Los Pollos Hermanos. The project implements a layout generator for small matched-device structures, beginning with GF180 NFET arrays and extending to matched transistor blocks such as differential pairs and current mirrors.
 
-When you use this template, you get:
-- **Pre-configured Docker environment** with IIC-OSIC-TOOLS and GlobalFoundries 180nm PDK
-- **VNC and web-based GUI access** for design tools like Xschem, Ngspice, Magic, and KLayout
-- **Cross-platform scripts** for launching the containerized design environment
-- **Example analog schematic and layout design** (5-Transistor OTA) with proper library structure and testbench
+## Overview
 
-## CAD Tool Computing Constellation
-First, review [this document](https://github.com/mosbiuschip/chipathon2025/tree/main/CAD_tool_computing_constellation) to get a sense of how the various pieces of software work together on your computer. 
+Analog layout often requires devices to be placed with controlled symmetry, orientation, and proximity in order to reduce systematic mismatch. MatchMaker addresses this placement problem by generating common-centroid structures programmatically rather than placing each unit device by hand.
 
-## Required Software on Your Computer
+The first version of the generator produces parameterized NFET common-centroid arrays, including the 2-by-2 and 2-by-4 structures used for initial testing. These primitive arrays are also used to generate higher-level matched transistor blocks. The generated layouts are written through gLayout and can be inspected as GDS outputs.
 
-Before you begin, you'll need to install the following required software:
+The project is currently centered on reliable placement generation and layout metadata. Routing, DRC, and LVS are handled as follow-on verification steps around the generated structures.
 
-### 1. GitHub Desktop
+## Implementation status
 
-- **Download**: [GitHub Desktop](https://desktop.github.com/)
-- Available for Windows, macOS, and Linux
-- Provides a user-friendly graphical interface for Git operations
+The current generator includes the base primitive flow and first matched-block flow.
 
-You don't have to know how to use the `git` command. Although learning it helps you understand how the version control works. If you are an experienced user, feel free to manage your repository from the command-line interface (CLI).
+| Area                                     | Status                     |
+| ---------------------------------------- | -------------------------- |
+| GF180 and gLayout setup                  | Complete                   |
+| Parameterized NFET array generation      | Complete                   |
+| 2-by-2 common-centroid primitive         | Complete                   |
+| 2-by-4 common-centroid primitive         | Complete                   |
+| Differential-pair style block generation | Complete                   |
+| Current-mirror style block generation    | Complete                   |
+| Dummy-aware placement support            | Complete                   |
+| Placement and terminal metadata          | Initial version complete   |
+| Routing support                          | Next milestone             |
+| DRC and LVS validation                   | Next milestone             |
+| Larger circuit integration               | Planned after verification |
 
-### 2. Docker Desktop
+## Generator scope
 
-`docker` is a lightweight, container-based alternative to virtual machines that ensures consistent development and deployment environments across different platforms by packaging applications with all their dependencies. *Docker Desktop* is its graphical user interface (GUI). 
+The generator currently operates on matched NFET structures in GF180. It controls the physical arrangement of unit devices, including array dimensions, placement order, device orientation, spacing, dummy placement, and exposed terminals.
 
-**Download and Installation:**
-- **Windows**: [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/)
-- **macOS**: [Docker Desktop for Mac](https://docs.docker.com/desktop/install/mac-install/)
-- **Linux**: [Docker Desktop for Linux](https://docs.docker.com/desktop/install/linux-install/) or [Docker Engine](https://docs.docker.com/engine/install/)
+The intended output is not only a visible layout, but also a repeatable layout structure that can be used as the basis for routing and verification. This keeps the project focused on the matched-device portion of analog layout before expanding into full block-level layout generation.
 
-**System Requirements:**
-- **Windows**: Windows 10/11 with WSL 2 enabled  
-  > **Note:** Windows Subsystem for Linux (WSL 2) provides the lightweight virtualization layer that Docker Desktop relies on for Linux containers. If WSL 2 is not yet installed on your machine, follow Microsoft’s official guide: <https://learn.microsoft.com/windows/wsl/install>. After WSL 2 is enabled, Docker Desktop will automatically detect it; see Docker’s documentation for details: <https://docs.docker.com/desktop/windows/wsl/>.
-- **macOS**: macOS 10.15 or newer
-- **Linux**: 64-bit distribution with kernel 3.10+
+## Development path
 
-In this project we will be using the IIC-OSIC-TOOLS docker (https://github.com/iic-jku/IIC-OSIC-TOOLS) to setup our development environments.
+The first development stage produced the primitive common-centroid array generator. This stage is implemented for the initial 2-by-2 and 2-by-4 NFET cases.
 
+The second stage produced matched transistor blocks using the primitive array generator. This includes differential-pair and current-mirror style layouts.
 
-## Getting Started: Team Environment Setup
+The next stage is verification and integration. The main work here is routing support, port organization, regression checks, DRC, and LVS. After that, the generated blocks can be tested inside a larger analog or mixed-signal design.
 
-### GitHub Collaborative Team Workflow
-For the detailed branching and pull-request process see **[docs/team_workflow.md](docs/team_workflow.md)**.
+Future circuit targets include LDO bias structures, comparator input-pair layouts, and CDAC or unit-capacitor array experiments.
 
-In brief:
-- The **team leader** creates the repository from this template and adds teammates as collaborators.
-- Every contributor works on a dedicated feature branch and opens a pull request for review before merging into `main`.  
+## CDAC and SAR ADC collaboration
 
-### Step 1: Create Your Project Repository
+A possible follow-on target is a capacitor array generator for the SAR ADC group. The CDAC is a strong candidate because its layout depends heavily on matching, symmetry, array structure, and routing discipline.
 
-#### Use GitHub Template
+Before starting that block, the required information from the ADC team is the ADC resolution, unit capacitor geometry, array topology, matching target, routing constraints, block interface, and expected handoff format.
 
-This repository is set up as a GitHub template. Using the template feature gives you a clean project without the template's commit history.
+## Repository structure
 
-
-
-1. Visit the template repository: [https://github.com/Jianxun/iic-osic-tools-project-template/](https://github.com/Jianxun/iic-osic-tools-project-template/)
-2. Click the green **"Use this template"** button
-3. Select **"Create a new repository"**
-4. Fill in your repository details:
-   - Repository name (e.g., `my-analog-design-project`)
-   - Description (optional)
-   - Choose public or private
-5. Click **"Create repository"**
-
-![GitHub "Use this template" button](docs/screenshots/using_github_template.png)
-
-**Clone your new repository to your local machine using GitHub Desktop:**
-1. Open GitHub Desktop
-2. Click "Clone a repository from the Internet"
-3. Select your newly created repository
-4. Choose your local directory and click "Clone"
-
-![GitHub Desktop clone dialog](docs/screenshots/clone_your_repo.png)
-
-### Step 2: Launch the Docker Container
-
-The project includes platform-specific scripts to launch the Docker container with the IIC-OSIC-TOOLS environment. **Before running the following scripts, make sure your Docker Desktop is running.**
-
-#### For Mac/Unix/Linux Systems:
-Open a terminal, navigate to you repository, and use the following command:
-```bash
-./start_chipathon_vnc.sh
+```text
+.
+├── README.md
+├── notebooks/
+│   └── generator tests and layout demos
+├── scripts/
+│   └── standalone generation scripts
+├── src/
+│   └── reusable generator code
+├── layouts/
+│   └── generated GDS outputs
+└── docs/
+    └── notes, figures, and design documentation
 ```
 
-#### For Windows Systems:
+The directory structure may change as notebook experiments are moved into reusable source code.
 
-**Open Command Prompt or PowerShell** navigate to you repository, and use the following command:
+## Team
 
+Team Los Pollos Hermanos
+Chipathon Track D
+AI and LLM for Analog Circuits
 
-```cmd
-.\start_chipathon_vnc.bat
-```
-If you are familiar with git bash, feel free to use `start_chipathon_vnc.sh`.
+| Name or Discord | Github         | Affiliation              | Role                             |
+| --------------- | -------------- | ------------------------ | -------------------------------- |
+| s_a_castillo    | @saul-castillo | Brown University, EE '28 | Team lead and layout automation  |
+| Zeke_956        | @zeke956       | Brown University, EE '28 | DRC and LVS verification support |
+| Cpg_49          | @[TBA]         | Brown University, ME '28 | Demo integration and testing     |
 
-#### ICC-OSIC-TOOLS Image Download 
+## Links
 
-Now the script pulls the IIC-OSIC-TOOLS *chipathon* image. Have a coffee.
-
-![Container startup messages](docs/screenshots/docker_pull.png)
-
-### Step 3: Access the Design Environment in the Docker Container
-
-Once the container is running, you have two options to access the design environment:
-
-#### Option A: VNC Client (Recommended for better performance)
-1. Download a VNC client:
-   - **Windows**: [TigerVNC](https://tigervnc.org) 
-   - **macOS**: [TigerVNC](https://tigervnc.org)  or built-in Screen Sharing
-   - **Linux**: `vncviewer` (install via package manager)
-
-2. Connect to: `localhost:5901`
-3. Enter password: `abc123`
-
-
-#### Option B: Web Browser (noVNC) (Good for quick debug)
-
-1. Open your web browser
-2. Navigate to: `http://localhost`
-3. Enter password: `abc123`
-4. Click "Connect"
-
-
-### Step 4: Open a Terminal in the Container
-
-Once you're in the VNC session, you can start running the design tools in the containter:
-1. Right-click on the desktop
-2. Select "Terminal Emulator" (or similar option)
-3. You should automatically be in the `/foss/designs` directory
-
-![Desktop context menu with Terminal Emulator option](docs/screenshots/open_a_terminal.png)
-
-### Step 5: Launch Design Tools
-
-You can now start the design tools from the terminal. 
-
-#### Schematic Entry
-
-Launch Xschem for schematic design:
-```bash
-xschem
-```
-You should see the Xschem GUI with available devices from `gf180mcu` and their testbenches. Xschem has UI buttons to netlist and simulate your schematic. You can display results in Xschem or GAW (an external viewer).
-
-See the recommended schematic workflow **[docs/schematic_workflow.md](docs/schematic_workflow.md)**
-
-![Xschem interface with PDK libraries loaded](docs/screenshots/start_xschem.png)
-
-#### Layout
-
-Launch Klayout for layout design:
-```bash
-./scripts/klayout_start.sh
-```
-See the recommended layout workflow with Klayout **[docs/layout_workflow.md](docs/layout_workflow.md)**
-
-![KLayout](docs/screenshots/start_klayout.png)
-
-
-#### Other Tools
-You can launch the other design tools with their appropriate commands. Take a look at [this document](https://github.com/mosbiuschip/chipathon2025/tree/main/CAD_tool_flow) for a brief overview of the analog full custom design CAD flow. 
-
-
-### [Troubleshooting Notes](troubleshooting.md)
-
-## Running Tools After Installation
-
-Once you have run the script for the first time, the container can be started much quicker. 
-
-- Open a terminal or shell on your local machine, go to the local folder that holds your local repo and execute `./start_chipathon_vnc.sh` or `.\start_chipathon_vnc.bat`; [see Step 2 above](#step-2-launch-the-docker-container). Since the container exists, you will get the following prompt:
-
-```
-> ./start_chipathon_vnc.sh 
-[WARNING] Container iic-osic-tools_chipathon_xvnc_uid_501 exists.
-[HINT] It can also be restarted with "docker start iic-osic-tools_chipathon_xvnc_uid_501" or removed with "docker rm iic-osic-tools_chipathon_xvnc_uid_501" if required.
-
-Press "s" to start, and "r" to remove: 
-```
-- Hit `s` to start the container. 
-   - *Note:* You can also start the container from the *Docker Desktop* and directly connect with VNC (next step).
-
-- Connect to the running container with VNC or your browser [see Step 3 above](#step-3-access-the-design-environment-in-the-docker-container).
-
-- Start using the tools [Steps 4, 5, 6 above](#step-4-open-a-terminal-in-the-container)
-
-
-
-## Library Structure Conventions
-
-**A strict file management strategy is required to keep the project and file management easy for a successful tape-out.** Here we propose a folder structure that we think will work well, but of course, other organizations are possible. It's key  to communicate among team members and to *stick* to the chosen approach. 
-
-### Project Folder Structure
-
-The `/foss/designs` directory inside the Docker container is mounted from the `designs` folder in the local copy of this repository on your computer. 
-
-**Important:** Keep all your design files in the `designs` folder to ensure they persist when the Docker container is restarted. Files in other folders inside the container might be deleted, and will for sure be lost if the container gets deleted. 
-
-```
-project-root/
-├── designs/                 # Your design files (mounted in container as /foss/designs)
-│   ├── libs/                   # Design libraries
-│   ├── simulations/            # Symbolic link to the Xschem simulation result folder
-│   └── scripts                 # scripts for launching tools and library maintenance
-├── start_chipathon_vnc.sh   # Container launch script (Unix/Linux/Mac)
-├── start_chipathon_vnc.bat  # Container launch script (Windows)
-└── README.md                # This file
-```
-
-**FYI:** `/foss/designs/simulations` is a symbolic link to `/headless/.xschem/simulations` where `xschem` asks `ngspice` to save its simulation results. 
-
-### Design Library Folder Structure
-
-The project follows specific naming conventions for organizing design libraries under `/designs/libs/`:
-
-```
-/designs/libs/
-├── core_*/          # Design libraries (core circuit cells)
-├── tb_*/            # Testbench libraries
-└── ...
-```
-
-### Naming Conventions
-- **`core_*`**: Design libraries containing your core circuit implementations. 
-- **`tb_*`**: Testbench libraries containing simulation and verification setups.
-
-### File Organization
-Within each library directory:
-- Each cell should have its own subdirectory: `/designs/libs/library_name/cell_name/`
-- Files within a cell directory should be prefixed with the cell name (e.g., `cell_name.sch`, `cell_name.sym`)
-- **Exception**: Testbench directories (starting with `tb_`) are exempt from the file naming prefix requirement
-
-
-## Example Design: 5-Transistor Single Stage OTA
-
-This project includes a reference design to demonstrate the library structure and design flow:
-
-### Libraries
-- **Design**: 5-Transistor Single Stage Operational Transconductance Amplifier (OTA)
-- **Library Location**: `core_analog`
-- **Testbench Location**: `tb_analog`
-
-
-### Usage
-1. **Design Files**: Navigate to `/designs/libs/core_analog/` to find the schematics and symbols of the OTA cell and parameterized unit transistor cells.
-2. **Testbench**: Use the verification setups in `/designs/libs/tb_analog/` to simulate and characterize the design.
-3. **Validation**: Run the library check to ensure proper file organization:
-   ```bash
-   cd designs/CI
-   ./library_check.sh
-   ```
-
-This example demonstrates the proper use of the library naming conventions (`core_*` for design libraries, `tb_*` for testbenches) and serves as a starting point for developing your own analog circuits.
-
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+* [Chipathon issue 70](https://github.com/sscs-ose/sscs-chipathon-2026/issues/70)
+* [MatchMaker repository](https://github.com/saul-castillo/MatchMaker)
