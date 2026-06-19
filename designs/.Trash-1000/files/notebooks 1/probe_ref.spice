@@ -1,0 +1,3 @@
+
+.subckt nfet_2x2_diffpair GATE_A GATE_B DRAIN_A DRAIN_B TAIL BULK
+.ends nfet_2x2_diffpair
