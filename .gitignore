@@ -1,5 +1,16 @@
+# Local Python / gLayout environment
+designs/glayout-venv/
+glayout-venv/
 
- designs/glayout-venv/
+# Python junk
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# editor / OS junk
+.DS_Store
+.vscode/
+
 # Ignore all spice simulation results
 *.raw
 
