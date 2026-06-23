@@ -7,6 +7,10 @@ from .patterns import abba_pattern
 def build_centroid_array(spec: CentroidArraySpec, output_dir: str | Path):
     """
     First engine stub.
+
+    This resolves the deterministic centroid placement pattern and prepares
+    the output directory. The next step is to move the working gLayout
+    placement code from the baseline notebook into this function.
     """
     if spec.pattern != "ABBA":
         raise NotImplementedError("Only ABBA pattern is currently supported")

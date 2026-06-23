@@ -40,7 +40,6 @@ def main():
     )
 
     output_dir = DESIGNS_ROOT / "libs" / "core_analog" / cell_name
-
     result = build_centroid_array(spec, output_dir)
 
     print(f"Cell: {result['cell_name']}")
