@@ -2,7 +2,9 @@
 designs/.Trash-1000/
 designs/.config/
 designs/.jupyter/
+designs/.jupyter_ystore.db
 designs/glayout-venv/
+designs/glayout/
 glayout-venv/
 
 # editor backup files
@@ -21,7 +23,7 @@ __pycache__/
 # local environment variables
 .env
 
-# simulation / generated junk
+# simulation/generated junk
 *.raw
 *.log
 *.net
@@ -32,13 +34,7 @@ designs/simulations/
 # temp files
 temp/
 
-# devcontainer / local tools
+# devcontainer/local tools
 .devcontainer/
 tools/
 context/
-
-# local Jupyter/container files
-designs/.jupyter_ystore.db
-
-# local gLayout checkout / tool files
-designs/glayout/
