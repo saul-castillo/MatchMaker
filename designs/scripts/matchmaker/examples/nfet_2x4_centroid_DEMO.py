@@ -6,9 +6,9 @@ DESIGNS_ROOT = ENGINE_ROOT.parents[1]
 
 sys.path.insert(0, str(ENGINE_ROOT))
 
-from centroid_engine.spec import DeviceSpec, CentroidArraySpec
-from centroid_engine.build_array import build_centroid_array
-from centroid_engine.patterns import print_pattern
+from engine.spec import DeviceSpec, CentroidArraySpec
+from engine.build_array import build_centroid_array
+from engine.patterns import print_pattern
 
 
 def main():
@@ -39,7 +39,7 @@ def main():
         pattern="ABBA",
     )
 
-    output_dir = DESIGNS_ROOT / "libs" / "core_centroid" / cell_name
+    output_dir = DESIGNS_ROOT / "libs" / "core_analog" / cell_name
 
     result = build_centroid_array(spec, output_dir)
 

@@ -1,3 +1,13 @@
+# local desktop/container junk
+designs/.Trash-1000/
+designs/.config/
+designs/.jupyter/
+designs/glayout-venv/
+
+# editor backup files
+*.save
+*~
+
 # Local Python / gLayout environment
 designs/glayout-venv/
 glayout-venv/
