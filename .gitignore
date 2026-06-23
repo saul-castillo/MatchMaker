@@ -36,3 +36,9 @@ temp/
 .devcontainer/
 tools/
 context/
+
+# local Jupyter/container files
+designs/.jupyter_ystore.db
+
+# local gLayout checkout / tool files
+designs/glayout/
