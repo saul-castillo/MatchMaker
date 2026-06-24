@@ -1,0 +1,19 @@
+* NGSPICE file created from nfet_2x4_centroid.ext - technology: gf180mcuD
+
+.subckt Unnamed_21ef1a24 a_90_n381# a_n438_n381# a_n232_n381# a_n310_n589# VSUBS
+X0 a_90_n381# a_90_n381# a_90_n381# VSUBS nfet_03v3 ad=2.19p pd=7.46u as=4.38p ps=14.92u w=3u l=0.28u
+X1 a_n232_n381# a_n310_n589# a_n438_n381# VSUBS nfet_03v3 ad=2.25p pd=7.5u as=2.25p ps=7.5u w=3u l=0.28u
+.ends
+
+.subckt Unnamed_7e5088f3 a_288_n381# a_n438_n381# a_82_n381# a_210_n589# VSUBS
+X0 a_288_n381# a_210_n589# a_82_n381# VSUBS nfet_03v3 ad=2.25p pd=7.5u as=2.25p ps=7.5u w=3u l=0.28u
+X1 a_n438_n381# a_n438_n381# a_n438_n381# VSUBS nfet_03v3 ad=2.19p pd=7.46u as=4.38p ps=14.92u w=3u l=0.28u
+.ends
+
+.subckt nfet_2x4_centroid GATE_A GATE_B DRAIN_A DRAIN_B TAIL BULK
+XUnnamed_21ef1a24_0 BULK TAIL DRAIN_A GATE_A BULK Unnamed_21ef1a24
+XUnnamed_21ef1a24_1 BULK TAIL DRAIN_B GATE_B BULK Unnamed_21ef1a24
+XUnnamed_7e5088f3_0 DRAIN_B BULK TAIL GATE_B BULK Unnamed_7e5088f3
+XUnnamed_7e5088f3_1 DRAIN_A BULK TAIL GATE_A BULK Unnamed_7e5088f3
+.ends
+

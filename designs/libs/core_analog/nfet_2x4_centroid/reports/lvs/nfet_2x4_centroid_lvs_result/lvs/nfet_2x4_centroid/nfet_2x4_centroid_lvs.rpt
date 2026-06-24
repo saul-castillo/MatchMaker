@@ -1,0 +1,46 @@
+
+Circuit 1 cell nfet_03v3 and Circuit 2 cell nfet_03v3 are black boxes.
+Warning: Equate pins:  cell nfet_03v3 is a placeholder, treated as a black box.
+Warning: Equate pins:  cell nfet_03v3 is a placeholder, treated as a black box.
+
+Subcircuit pins:
+Circuit 1: nfet_03v3                       |Circuit 2: nfet_03v3                       
+-------------------------------------------|-------------------------------------------
+1                                          |1                                          
+2                                          |2                                          
+3                                          |3                                          
+4                                          |4                                          
+---------------------------------------------------------------------------------------
+Cell pin lists are equivalent.
+Device classes nfet_03v3 and nfet_03v3 are equivalent.
+Flattening unmatched subcell Unnamed_21ef1a24 in circuit nfet_2x4_centroid (0)(2 instances)
+Flattening unmatched subcell Unnamed_7e5088f3 in circuit nfet_2x4_centroid (0)(2 instances)
+
+Class nfet_2x4_centroid (0):  Merged 5 parallel devices.
+Class nfet_2x4_centroid (1):  Merged 5 parallel devices.
+Subcircuit summary:
+Circuit 1: nfet_2x4_centroid               |Circuit 2: nfet_2x4_centroid               
+-------------------------------------------|-------------------------------------------
+nfet_03v3 (8->3)                           |nfet_03v3 (8->3)                           
+Number of devices: 3                       |Number of devices: 3                       
+Number of nets: 6                          |Number of nets: 6                          
+---------------------------------------------------------------------------------------
+Resolving symmetries by property value.
+Resolving symmetries by pin name.
+Netlists match uniquely.
+
+Subcircuit pins:
+Circuit 1: nfet_2x4_centroid               |Circuit 2: nfet_2x4_centroid               
+-------------------------------------------|-------------------------------------------
+DRAIN_B                                    |DRAIN_B                                    
+DRAIN_A                                    |DRAIN_A                                    
+GATE_B                                     |GATE_B                                     
+GATE_A                                     |GATE_A                                     
+TAIL                                       |TAIL                                       
+BULK                                       |BULK                                       
+---------------------------------------------------------------------------------------
+Cell pin lists are equivalent.
+Device classes nfet_2x4_centroid and nfet_2x4_centroid are equivalent.
+
+Final result: Circuits match uniquely.
+.

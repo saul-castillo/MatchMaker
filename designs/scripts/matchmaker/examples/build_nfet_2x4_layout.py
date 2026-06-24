@@ -1,13 +1,32 @@
 from pathlib import Path
+import shutil
+
 DESIGNS_ROOT = Path("/foss/designs")
+
 CELL_NAME = "nfet_2x4_centroid"
+DESIGN_NAME = CELL_NAME
+
 CELL_DIR = DESIGNS_ROOT / "libs" / "core_analog" / CELL_NAME
-CELL_DIR.mkdir(parents=True, exist_ok=True)
 
-FINAL_GDS = CELL_DIR / f"{CELL_NAME}.gds"
+GDS_DIR = CELL_DIR / "gds"
+NETLIST_DIR = CELL_DIR / "netlist"
+REPORT_DIR = CELL_DIR / "reports"
+DRC_DIR = REPORT_DIR / "drc"
+LVS_DIR = REPORT_DIR / "lvs"
 
-print("Output directory:", CELL_DIR)
+for path in (GDS_DIR, NETLIST_DIR, DRC_DIR, LVS_DIR):
+    path.mkdir(parents=True, exist_ok=True)
+
+FINAL_GDS = GDS_DIR / f"{CELL_NAME}.gds"
+REF_NETLIST = NETLIST_DIR / f"{CELL_NAME}_ref_flat.spice"
+DRC_REPORT = DRC_DIR / f"{CELL_NAME}_drc.lyrdb"
+LVS_OUTPUT_DIR = LVS_DIR / f"{CELL_NAME}_lvs_result"
+
+print("Cell directory:", CELL_DIR)
 print("Final GDS:", FINAL_GDS)
+print("Reference netlist:", REF_NETLIST)
+print("DRC report:", DRC_REPORT)
+print("LVS output directory:", LVS_OUTPUT_DIR)
 
 #Begin building
 
@@ -16,12 +35,6 @@ from glayout import gf180, nmos, rename_ports_by_orientation, straight_route, ta
 from glayout.backend import Component, rectangle
 
 gf180.activate()
-
-DESIGN_NAME = "nfet_2x2_diffpair"
-FINAL_GDS = Path(f"{DESIGN_NAME}_clean.gds")
-REF_NETLIST = Path(f"{DESIGN_NAME}_ref_flat.spice")
-DRC_REPORT_DIR = Path(f"{DESIGN_NAME}_drc.lyrdb")
-LVS_OUTPUT_DIR = Path(f"{DESIGN_NAME}_lvs_result.txt")
 
 #----
 
@@ -396,17 +409,17 @@ for name in interface_ports:
 #---
 
 top.write_gds(str(FINAL_GDS))
-print(f"Wrote {FINAL_GDS.resolve()}")
+print(f"Wrote GDS: {FINAL_GDS}")
 
 #---
 
-drc_ok = gf180.drc(top, str(DRC_REPORT_DIR))
+drc_ok = gf180.drc(top, str(DRC_REPORT))
 print("DRC:", drc_ok)
 if drc_ok:
     print("DRC: PASS")
 else:
     print("DRC: FAIL")
-    print(f"DRC report written to: {DRC_REPORT_DIR}")
+    print(f"DRC report written to: {DRC_REPORT}")
 
 #---
 
@@ -457,9 +470,6 @@ if lvs_ok:
     print("LVS: PASS")
 else:
     print("LVS: FAIL")
-    print(f"LVS report written to: {LVS_REPORT_DIR}")
+    print(f"LVS report written to: {LVS_OUTPUT_DIR}")
 
 #---
-
-top.write_gds(str(FINAL_GDS))
-print(f"Wrote: {FINAL_GDS}")
