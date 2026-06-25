@@ -11,7 +11,7 @@ from glayout import gf180
 from engine.spec import DeviceSpec, CentroidArraySpec
 from engine.patterns import make_abba_plan
 from engine.mos_centroid_placement_builder import build_mos_centroid_placement
-
+from engine.core_analog_cell_paths import create_core_analog_cell_paths
 
 def main():
     gf180.activate()
@@ -51,14 +51,15 @@ def main():
 
     top = build_mos_centroid_placement(spec, plan)
 
-    out_dir = DESIGNS_ROOT / "libs" / "core_analog" / cell_name / "gds"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = create_core_analog_cell_paths(
+    designs_root=DESIGNS_ROOT,
+    cell_name=cell_name,
+    )
 
-    gds_path = out_dir / f"{cell_name}.gds"
-    top.write_gds(str(gds_path))
+    top.write_gds(str(paths.final_gds))
 
     print()
-    print(f"Wrote PFET placement-only GDS: {gds_path}")
+    print(f"Wrote PFET placement-only GDS: {paths.final_gds}")
 
 
 if __name__ == "__main__":
