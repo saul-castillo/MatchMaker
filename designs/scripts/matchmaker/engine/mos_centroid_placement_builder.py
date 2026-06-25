@@ -10,6 +10,21 @@ def get_component_bbox_size(component):
     (xmin, ymin), (xmax, ymax) = component.bbox
     return float(xmax - xmin), float(ymax - ymin)
 
+def assign_component_name(component, name: str):
+    """
+    Give a generated gLayout/gdsfactory component a stable hierarchy name.
+
+    This avoids unnamed-cell warnings when writing GDS.
+    """
+    try:
+        component.name = name
+    except Exception:
+        if hasattr(component, "rename"):
+            component.rename(name)
+        else:
+            raise
+
+    return component
 
 def orient_mos_reference_for_centroid_tile(ref, orientation: str):
     if orientation == "R0":
@@ -35,13 +50,23 @@ def build_mos_centroid_placement(
         raise ValueError("device_a and device_b must have the same MOS kind for now.")
 
     left_edge_unit = create_gf180_mos_primitive(
-        device=spec.device_a,
-        dummies=(True, False),
+    device=spec.device_a,
+    dummies=(True, False),
     )
 
     right_edge_unit = create_gf180_mos_primitive(
-        device=spec.device_a,
-        dummies=(False, True),
+    device=spec.device_a,
+    dummies=(False, True),
+    )
+
+    left_edge_unit = assign_component_name(
+    left_edge_unit,
+    f"{spec.cell_name}_{spec.device_a.kind}_left_dummy_unit",
+    )
+
+    right_edge_unit = assign_component_name(
+    right_edge_unit,
+    f"{spec.cell_name}_{spec.device_a.kind}_right_dummy_unit",
     )
 
     w_left, h_left = get_component_bbox_size(left_edge_unit)
