@@ -12,7 +12,7 @@ from engine.spec import DeviceSpec, CentroidArraySpec
 from engine.patterns import make_abba_plan
 from engine.mos_centroid_placement_builder import build_mos_centroid_placement
 from engine.core_analog_cell_paths import create_core_analog_cell_paths
-
+from engine.mos_centroid_spacing_policy import MosCentroidSpacingPolicy
 
 def main():
     gf180.activate()
@@ -39,7 +39,7 @@ def main():
         cell_name=cell_name,
         device_a=nfet_a,
         device_b=nfet_b,
-        rows=2,
+        rows=4,
         cols=4,
         pattern="ABBA",
     )
@@ -50,7 +50,15 @@ def main():
         cols=spec.cols,
     )
 
-    top = build_mos_centroid_placement(spec, plan)
+    top = build_mos_centroid_placement(
+        spec=spec,
+        plan=plan,
+        spacing_policy=MosCentroidSpacingPolicy(
+            kind="fixed_pitch",
+            x_pitch=12.0,
+            y_pitch=12.0,
+        ),
+    )
 
     paths = create_core_analog_cell_paths(
     designs_root=DESIGNS_ROOT,
