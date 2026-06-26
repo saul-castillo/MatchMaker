@@ -8,6 +8,10 @@ from .mos_dummy_placement_policy import (
     MosDummyPlacementPolicy,
     get_mos_dummy_configuration_for_tile,
 )
+from .mos_centroid_spacing_policy import (
+    MosCentroidSpacingPolicy,
+    calculate_mos_centroid_tile_pitch,
+)
 
 
 def get_component_bbox_size(component):
@@ -46,6 +50,7 @@ def build_mos_centroid_placement(
     spec: CentroidArraySpec,
     plan: PlacementPlan,
     dummy_policy: MosDummyPlacementPolicy | None = None,
+    spacing_policy: MosCentroidSpacingPolicy | None = None,
 ) -> Component:
     """
     Build a placement-only MOS common-centroid array from a PlacementPlan.
@@ -58,6 +63,9 @@ def build_mos_centroid_placement(
 
     if dummy_policy is None:
         dummy_policy = MosDummyPlacementPolicy(kind="edge_only")
+
+    if spacing_policy is None:
+        spacing_policy = MosCentroidSpacingPolicy(kind="bbox_plus_margin")
 
     # Build representative units for every dummy configuration needed by the plan.
     unit_cache = {}
@@ -91,8 +99,18 @@ def build_mos_centroid_placement(
         unit_widths.append(width)
         unit_heights.append(height)
 
-    x_pitch = max(unit_widths) + 2.0
-    y_pitch = max(unit_heights) + 2.0
+    x_pitch, y_pitch = calculate_mos_centroid_tile_pitch(
+    unit_widths=unit_widths,
+    unit_heights=unit_heights,
+    spacing_policy=spacing_policy,
+    )
+
+    print(
+    f"MOS centroid pitch: "
+    f"x_pitch={x_pitch:.3f}, "
+    f"y_pitch={y_pitch:.3f}, "
+    f"spacing_policy={spacing_policy.kind}"
+    )
 
     top = Component(name=spec.cell_name)
 
