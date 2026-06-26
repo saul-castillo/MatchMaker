@@ -61,6 +61,13 @@ def build_mos_centroid_placement(
     if spec.device_a.kind != spec.device_b.kind:
         raise ValueError("device_a and device_b must have the same MOS kind for now.")
 
+    if spec.rows != plan.rows or spec.cols != plan.cols:
+        raise ValueError(
+            "spec dimensions do not match placement plan dimensions: "
+            f"spec=({spec.rows}, {spec.cols}), "
+            f"plan=({plan.rows}, {plan.cols})"
+        )
+
     if dummy_policy is None:
         dummy_policy = MosDummyPlacementPolicy(kind="edge_only")
 
