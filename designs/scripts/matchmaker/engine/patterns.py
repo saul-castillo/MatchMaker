@@ -1,3 +1,10 @@
+from .plan import PlacementPlan, Tile
+from .mos_centroid_orientation_policy import (
+    MosCentroidOrientationPolicy,
+    get_mos_centroid_orientation_for_tile,
+)
+
+
 def abba_pattern(rows: int, cols: int) -> list[list[str]]:
     """
     Generate an AB/BA common-centroid pattern.
@@ -5,27 +12,32 @@ def abba_pattern(rows: int, cols: int) -> list[list[str]]:
     Example for 2x4:
         A B B A
         B A A B
+
+    Example for 4x4:
+        A B B A
+        B A A B
+        A B B A
+        B A A B
     """
     if rows <= 0 or cols <= 0:
         raise ValueError("rows and cols must be positive")
 
-    if cols % 2 != 0:
-        raise ValueError("ABBA pattern currently expects an even number of columns")
+    if cols % 4 != 0:
+        raise ValueError("ABBA pattern currently expects columns to be a multiple of 4")
 
-    base = ["A", "B", "B", "A"]
+    even_row_base = ["A", "B", "B", "A"]
+    odd_row_base = ["B", "A", "A", "B"]
 
     pattern = []
-    for r in range(rows):
+
+    for row_index in range(rows):
+        base = even_row_base if row_index % 2 == 0 else odd_row_base
+
         row = []
         while len(row) < cols:
             row.extend(base)
 
-        row = row[:cols]
-
-        if r % 2 == 1:
-            row = ["B" if x == "A" else "A" for x in row]
-
-        pattern.append(row)
+        pattern.append(row[:cols])
 
     return pattern
 
@@ -34,17 +46,19 @@ def print_pattern(pattern: list[list[str]]) -> None:
     for row in pattern:
         print(" ".join(row))
 
-from .plan import PlacementPlan, Tile
 
-
-def make_abba_plan(cell_name: str, rows: int, cols: int) -> PlacementPlan:
+def make_abba_plan(
+    cell_name: str,
+    rows: int,
+    cols: int,
+    orientation_policy: MosCentroidOrientationPolicy | None = None,
+) -> PlacementPlan:
     """
     Build a deterministic ABBA common-centroid placement plan.
-
-    Example for 2x4:
-        A B B A
-        B A A B
     """
+    if orientation_policy is None:
+        orientation_policy = MosCentroidOrientationPolicy(kind="mirror_top_bottom")
+
     pattern = abba_pattern(rows, cols)
 
     counts = {"A": 0, "B": 0}
@@ -55,14 +69,19 @@ def make_abba_plan(cell_name: str, rows: int, cols: int) -> PlacementPlan:
             name = f"{group}{counts[group]}"
             counts[group] += 1
 
-            # Matches the current demo convention:
-            # top row is mirrored, bottom row is unmirrored.
-            orientation = "MY" if row_index == 0 else "R0"
+            orientation = get_mos_centroid_orientation_for_tile(
+                row=row_index,
+                col=col_index,
+                rows=rows,
+                cols=cols,
+                policy=orientation_policy,
+            )
 
             tiles.append(
                 Tile(
                     name=name,
                     group=group,
+                    role="active",
                     row=row_index,
                     col=col_index,
                     orientation=orientation,

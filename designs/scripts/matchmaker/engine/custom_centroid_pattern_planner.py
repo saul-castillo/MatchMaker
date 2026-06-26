@@ -1,4 +1,4 @@
-from .plan import PlacementPlan, Tile
+from .plan import PlacementPlan, Tile, TileRole
 from .mos_centroid_orientation_policy import (
     MosCentroidOrientationPolicy,
     get_mos_centroid_orientation_for_tile,
@@ -8,14 +8,6 @@ from .mos_centroid_orientation_policy import (
 def validate_custom_centroid_group_grid(group_grid: list[list[str]]) -> tuple[int, int]:
     """
     Validate a user-provided centroid group grid.
-
-    Example:
-        [
-            ["A", "B", "A", "B"],
-            ["B", "A", "B", "A"],
-        ]
-
-    This only validates placement shape. It does not assign circuit meaning.
     """
     if not group_grid:
         raise ValueError("group_grid must contain at least one row")
@@ -39,6 +31,24 @@ def validate_custom_centroid_group_grid(group_grid: list[list[str]]) -> tuple[in
     return rows, cols
 
 
+def get_tile_role_from_grid_entry(entry: str) -> TileRole:
+    """
+    Interpret a grid entry as a tile role.
+
+    Current convention:
+        A, B, C, ... -> active device group
+        D            -> dummy tile
+        .            -> empty slot
+    """
+    if entry == ".":
+        return "empty"
+
+    if entry == "D":
+        return "dummy"
+
+    return "active"
+
+
 def make_custom_centroid_plan(
     cell_name: str,
     group_grid: list[list[str]],
@@ -47,13 +57,8 @@ def make_custom_centroid_plan(
     """
     Build a PlacementPlan from an explicit group grid.
 
-    This is the escape hatch for future higher-level planners. The grid defines
-    what group goes at each row/column location, while the orientation policy
-    decides how each tile is mirrored.
-
-    Current limitation:
-        All groups are treated as active MOS placement tiles by the placement
-        builder. Do not use this for center dummy tiles yet.
+    This is the canonical placement entry point for future spec-to-layout flows.
+    Pattern helpers such as ABBA should eventually compile down to this form.
     """
     if orientation_policy is None:
         orientation_policy = MosCentroidOrientationPolicy(kind="mirror_top_bottom")
@@ -64,9 +69,18 @@ def make_custom_centroid_plan(
     tiles = []
 
     for row_index, row in enumerate(group_grid):
-        for col_index, group in enumerate(row):
+        for col_index, entry in enumerate(row):
+            role = get_tile_role_from_grid_entry(entry)
+
+            if role == "empty":
+                group = "."
+            elif role == "dummy":
+                group = "D"
+            else:
+                group = entry
+
             group_count = counts.get(group, 0)
-            name = f"{group}{group_count}"
+            name = f"{group}{group_count}" if group != "." else f"EMPTY{group_count}"
             counts[group] = group_count + 1
 
             orientation = get_mos_centroid_orientation_for_tile(
@@ -81,6 +95,7 @@ def make_custom_centroid_plan(
                 Tile(
                     name=name,
                     group=group,
+                    role=role,
                     row=row_index,
                     col=col_index,
                     orientation=orientation,
