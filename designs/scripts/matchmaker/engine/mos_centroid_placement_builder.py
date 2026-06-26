@@ -1,8 +1,8 @@
 from glayout import rename_ports_by_orientation
 from glayout.backend import Component
 
-from .spec import CentroidArraySpec
-from .plan import PlacementPlan
+from .spec import CentroidArraySpec, DeviceSpec
+from .plan import PlacementPlan, Tile
 from .mos_primitive_factory import create_gf180_mos_primitive
 from .mos_dummy_placement_policy import (
     MosDummyPlacementPolicy,
@@ -11,6 +11,12 @@ from .mos_dummy_placement_policy import (
 from .mos_centroid_spacing_policy import (
     MosCentroidSpacingPolicy,
     calculate_mos_centroid_tile_pitch,
+)
+from .mos_group_device_binding import (
+    MosGroupDeviceMap,
+    create_mos_group_device_map_from_centroid_spec,
+    get_active_device_for_tile_group,
+    validate_active_tile_groups_have_device_bindings,
 )
 
 
@@ -22,8 +28,6 @@ def get_component_bbox_size(component):
 def assign_component_name(component, name: str):
     """
     Give a generated gLayout/gdsfactory component a stable hierarchy name.
-
-    This avoids unnamed-cell warnings when writing GDS.
     """
     try:
         component.name = name
@@ -52,8 +56,35 @@ def orient_mos_reference_for_centroid_tile(ref, orientation: str):
     raise NotImplementedError(f"Unsupported orientation: {orientation}")
 
 
+def get_mos_device_for_placement_tile(
+    tile: Tile,
+    device_by_group: MosGroupDeviceMap,
+    dummy_reference_device: DeviceSpec,
+) -> DeviceSpec:
+    """
+    Resolve which MOS DeviceSpec should be used for one placement tile.
+
+    Active tiles use their group binding.
+    Dummy tiles use a reference device so their dimensions match the array family.
+    Empty tiles should be skipped before this function is called.
+    """
+    if tile.role == "active":
+        return get_active_device_for_tile_group(
+            group=tile.group,
+            device_by_group=device_by_group,
+        )
+
+    if tile.role == "dummy":
+        return dummy_reference_device
+
+    raise ValueError(
+        f"Cannot resolve MOS device for tile {tile.name} "
+        f"with role={tile.role!r}"
+    )
+
+
 def get_mos_dummy_configuration_for_placement_tile(
-    tile,
+    tile: Tile,
     plan: PlacementPlan,
     dummy_policy: MosDummyPlacementPolicy,
 ) -> tuple[bool, bool]:
@@ -84,20 +115,26 @@ def create_mos_unit_cache_for_placement_plan(
     spec: CentroidArraySpec,
     plan: PlacementPlan,
     dummy_policy: MosDummyPlacementPolicy,
-) -> dict[tuple[str, tuple[bool, bool]], Component]:
+    device_by_group: MosGroupDeviceMap,
+) -> dict[tuple[str, str, tuple[bool, bool]], Component]:
     """
     Create and cache MOS unit cells needed by the placement plan.
 
     Cache key:
-        (tile_role, (left_dummy, right_dummy))
-
-    This prevents regenerating the same primitive for every tile.
+        (tile_role, tile_group, (left_dummy, right_dummy))
     """
     unit_cache = {}
+    dummy_reference_device = spec.device_a
 
     for tile in plan.tiles:
         if tile.role == "empty":
             continue
+
+        device = get_mos_device_for_placement_tile(
+            tile=tile,
+            device_by_group=device_by_group,
+            dummy_reference_device=dummy_reference_device,
+        )
 
         dummies = get_mos_dummy_configuration_for_placement_tile(
             tile=tile,
@@ -105,19 +142,21 @@ def create_mos_unit_cache_for_placement_plan(
             dummy_policy=dummy_policy,
         )
 
-        cache_key = (tile.role, dummies)
+        cache_group = tile.group if tile.role == "active" else "DUMMY"
+        cache_key = (tile.role, cache_group, dummies)
 
         if cache_key in unit_cache:
             continue
 
         unit = create_gf180_mos_primitive(
-            device=spec.device_a,
+            device=device,
             dummies=dummies,
         )
 
         unit_name = (
-            f"{spec.cell_name}_{spec.device_a.kind}"
+            f"{spec.cell_name}_{device.kind}"
             f"_{tile.role}"
+            f"_group_{cache_group}"
             f"_dummy_l{int(dummies[0])}_r{int(dummies[1])}_unit"
         )
 
@@ -130,7 +169,7 @@ def create_mos_unit_cache_for_placement_plan(
 
 
 def calculate_pitch_from_unit_cache(
-    unit_cache: dict[tuple[str, tuple[bool, bool]], Component],
+    unit_cache: dict[tuple[str, str, tuple[bool, bool]], Component],
     spacing_policy: MosCentroidSpacingPolicy,
 ) -> tuple[float, float]:
     unit_widths = []
@@ -153,15 +192,13 @@ def build_mos_centroid_placement(
     plan: PlacementPlan,
     dummy_policy: MosDummyPlacementPolicy | None = None,
     spacing_policy: MosCentroidSpacingPolicy | None = None,
+    device_by_group: MosGroupDeviceMap | None = None,
 ) -> Component:
     """
     Build a placement-only MOS common-centroid array from a PlacementPlan.
 
-    This places MOS primitives according to the plan.
-    It does not route, add taps, add labels, or run verification.
-
     Supported tile roles:
-        active -> placed as a normal MOS unit using the dummy policy
+        active -> placed using the tile group/device binding
         dummy  -> placed as a MOS dummy tile
         empty  -> skipped
     """
@@ -181,10 +218,19 @@ def build_mos_centroid_placement(
     if spacing_policy is None:
         spacing_policy = MosCentroidSpacingPolicy(kind="bbox_plus_margin")
 
+    if device_by_group is None:
+        device_by_group = create_mos_group_device_map_from_centroid_spec(spec)
+
+    validate_active_tile_groups_have_device_bindings(
+        plan=plan,
+        device_by_group=device_by_group,
+    )
+
     unit_cache = create_mos_unit_cache_for_placement_plan(
         spec=spec,
         plan=plan,
         dummy_policy=dummy_policy,
+        device_by_group=device_by_group,
     )
 
     x_pitch, y_pitch = calculate_pitch_from_unit_cache(
@@ -201,6 +247,8 @@ def build_mos_centroid_placement(
 
     top = Component(name=spec.cell_name)
 
+    dummy_reference_device = spec.device_a
+
     for tile in plan.tiles:
         if tile.role == "empty":
             print(
@@ -209,13 +257,20 @@ def build_mos_centroid_placement(
             )
             continue
 
+        device = get_mos_device_for_placement_tile(
+            tile=tile,
+            device_by_group=device_by_group,
+            dummy_reference_device=dummy_reference_device,
+        )
+
         dummies = get_mos_dummy_configuration_for_placement_tile(
             tile=tile,
             plan=plan,
             dummy_policy=dummy_policy,
         )
 
-        cache_key = (tile.role, dummies)
+        cache_group = tile.group if tile.role == "active" else "DUMMY"
+        cache_key = (tile.role, cache_group, dummies)
         unit = unit_cache[cache_key]
 
         ref = top << unit
@@ -230,7 +285,9 @@ def build_mos_centroid_placement(
         print(
             f"{tile.name} placed at "
             f"({x:.3f}, {y:.3f}) "
+            f"group={tile.group} "
             f"role={tile.role} "
+            f"device={device.name} "
             f"orientation={tile.orientation} "
             f"dummies={dummies}"
         )
