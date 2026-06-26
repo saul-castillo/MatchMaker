@@ -4,11 +4,16 @@ from glayout.backend import Component
 from .spec import CentroidArraySpec
 from .plan import PlacementPlan
 from .mos_primitive_factory import create_gf180_mos_primitive
+from .mos_dummy_placement_policy import (
+    MosDummyPlacementPolicy,
+    get_mos_dummy_configuration_for_tile,
+)
 
 
 def get_component_bbox_size(component):
     (xmin, ymin), (xmax, ymax) = component.bbox
     return float(xmax - xmin), float(ymax - ymin)
+
 
 def assign_component_name(component, name: str):
     """
@@ -26,6 +31,7 @@ def assign_component_name(component, name: str):
 
     return component
 
+
 def orient_mos_reference_for_centroid_tile(ref, orientation: str):
     if orientation == "R0":
         return ref
@@ -39,6 +45,7 @@ def orient_mos_reference_for_centroid_tile(ref, orientation: str):
 def build_mos_centroid_placement(
     spec: CentroidArraySpec,
     plan: PlacementPlan,
+    dummy_policy: MosDummyPlacementPolicy | None = None,
 ) -> Component:
     """
     Build a placement-only MOS common-centroid array from a PlacementPlan.
@@ -49,36 +56,54 @@ def build_mos_centroid_placement(
     if spec.device_a.kind != spec.device_b.kind:
         raise ValueError("device_a and device_b must have the same MOS kind for now.")
 
-    left_edge_unit = create_gf180_mos_primitive(
-    device=spec.device_a,
-    dummies=(True, False),
-    )
+    if dummy_policy is None:
+        dummy_policy = MosDummyPlacementPolicy(kind="edge_only")
 
-    right_edge_unit = create_gf180_mos_primitive(
-    device=spec.device_a,
-    dummies=(False, True),
-    )
+    # Build representative units for every dummy configuration needed by the plan.
+    unit_cache = {}
 
-    left_edge_unit = assign_component_name(
-    left_edge_unit,
-    f"{spec.cell_name}_{spec.device_a.kind}_left_dummy_unit",
-    )
+    for tile in plan.tiles:
+        dummies = get_mos_dummy_configuration_for_tile(
+            tile=tile,
+            plan=plan,
+            policy=dummy_policy,
+        )
 
-    right_edge_unit = assign_component_name(
-    right_edge_unit,
-    f"{spec.cell_name}_{spec.device_a.kind}_right_dummy_unit",
-    )
+        if dummies not in unit_cache:
+            unit = create_gf180_mos_primitive(
+                device=spec.device_a,
+                dummies=dummies,
+            )
 
-    w_left, h_left = get_component_bbox_size(left_edge_unit)
-    w_right, h_right = get_component_bbox_size(right_edge_unit)
+            unit_name = (
+                f"{spec.cell_name}_{spec.device_a.kind}"
+                f"_dummy_l{int(dummies[0])}_r{int(dummies[1])}_unit"
+            )
 
-    x_pitch = max(w_left, w_right) + 2.0
-    y_pitch = max(h_left, h_right) + 2.0
+            unit_cache[dummies] = assign_component_name(unit, unit_name)
+
+    # Use the largest unit dimensions to define a regular array pitch.
+    unit_widths = []
+    unit_heights = []
+
+    for unit in unit_cache.values():
+        width, height = get_component_bbox_size(unit)
+        unit_widths.append(width)
+        unit_heights.append(height)
+
+    x_pitch = max(unit_widths) + 2.0
+    y_pitch = max(unit_heights) + 2.0
 
     top = Component(name=spec.cell_name)
 
     for tile in plan.tiles:
-        unit = left_edge_unit if tile.col == 0 else right_edge_unit
+        dummies = get_mos_dummy_configuration_for_tile(
+            tile=tile,
+            plan=plan,
+            policy=dummy_policy,
+        )
+
+        unit = unit_cache[dummies]
 
         ref = top << unit
         ref = orient_mos_reference_for_centroid_tile(ref, tile.orientation)
@@ -92,7 +117,8 @@ def build_mos_centroid_placement(
         print(
             f"{tile.name} placed at "
             f"({x:.3f}, {y:.3f}) "
-            f"orientation={tile.orientation}"
+            f"orientation={tile.orientation} "
+            f"dummies={dummies}"
         )
 
     return top
