@@ -2,6 +2,8 @@ from matchmaker.placement.core.orientation_policy import OrientationPolicy
 from matchmaker.placement.core.spacing_policy import TileSpacingPolicy
 from matchmaker.placement.mos.mos_centroid_array_intent import (
     MosCentroidArrayIntent,
+    get_resolved_mos_centroid_array_shape,
+    normalize_mos_centroid_pattern_strategy,
     validate_mos_centroid_array_intent,
 )
 from matchmaker.placement.mos.mos_centroid_grid_compiler import (
@@ -14,35 +16,67 @@ from matchmaker.placement.mos.mos_dummy_policy import MosDummyPolicy
 from matchmaker.specs.mos_centroid_array_spec import MosCentroidArraySpec
 
 
-def make_abba_group_grid(
+def make_interdigitated_group_grid(
     rows: int,
     cols: int,
 ) -> list[list[str]]:
     """
-    Build a simple A/B ABBA-style matched grid.
+    Build alternating A/B rows.
+
+    Example, rows=2, cols=6:
+        A B A B A B
+        B A B A B A
+    """
+    if cols % 2 != 0:
+        raise ValueError("interdigitated group grid requires an even number of columns")
+
+    row_a = ["A" if col % 2 == 0 else "B" for col in range(cols)]
+    row_b = ["B" if col % 2 == 0 else "A" for col in range(cols)]
+
+    return [
+        row_a.copy() if row_index % 2 == 0 else row_b.copy()
+        for row_index in range(rows)
+    ]
+
+
+def make_mirrored_pair_group_grid(
+    rows: int,
+    cols: int,
+) -> list[list[str]]:
+    """
+    Build a mirrored pair pattern.
 
     Example, rows=2, cols=4:
         A B B A
         B A A B
     """
     if cols % 2 != 0:
-        raise ValueError("ABBA group grid requires an even number of columns")
+        raise ValueError("mirrored_pair group grid requires an even number of columns")
 
-    half_pattern = ["A", "B"] * (cols // 2)
-    mirrored_half_pattern = list(reversed(half_pattern))
+    left_half = ["A" if col % 2 == 0 else "B" for col in range(cols // 2)]
+    row_a = left_half + list(reversed(left_half))
+    row_b = [
+        "B" if entry == "A" else "A"
+        for entry in row_a
+    ]
 
-    row_a = mirrored_half_pattern
-    row_b = half_pattern
+    return [
+        row_a.copy() if row_index % 2 == 0 else row_b.copy()
+        for row_index in range(rows)
+    ]
 
-    grid = []
 
-    for row_index in range(rows):
-        if row_index % 2 == 0:
-            grid.append(row_a.copy())
-        else:
-            grid.append(row_b.copy())
+def make_common_centroid_group_grid(
+    rows: int,
+    cols: int,
+) -> list[list[str]]:
+    """
+    Current two-group common-centroid default.
 
-    return grid
+    For now this aliases to mirrored_pair. Keeping the function separate gives
+    us a cleaner place to improve the common-centroid planner later.
+    """
+    return make_mirrored_pair_group_grid(rows=rows, cols=cols)
 
 
 def apply_center_pair_dummy_tiles(
@@ -79,14 +113,26 @@ def compile_mos_centroid_intent_to_grid(
     """
     validate_mos_centroid_array_intent(intent)
 
-    if intent.pattern_style == "abba":
-        group_grid = make_abba_group_grid(
-            rows=intent.rows,
-            cols=intent.cols,
-        )
+    rows, cols = get_resolved_mos_centroid_array_shape(intent)
+    pattern_strategy = normalize_mos_centroid_pattern_strategy(intent.pattern_strategy)
+
+    if pattern_strategy == "custom_grid":
+        if intent.group_grid is None:
+            raise ValueError("custom_grid strategy requires group_grid")
+        group_grid = [row.copy() for row in intent.group_grid]
+
+    elif pattern_strategy == "interdigitated":
+        group_grid = make_interdigitated_group_grid(rows=rows, cols=cols)
+
+    elif pattern_strategy == "mirrored_pair":
+        group_grid = make_mirrored_pair_group_grid(rows=rows, cols=cols)
+
+    elif pattern_strategy == "common_centroid":
+        group_grid = make_common_centroid_group_grid(rows=rows, cols=cols)
+
     else:
         raise NotImplementedError(
-            "custom pattern_style should use the explicit grid compiler for now"
+            f"Unsupported normalized pattern strategy: {pattern_strategy}"
         )
 
     if intent.dummy_tile_strategy == "center_pair":
@@ -104,15 +150,17 @@ def compile_mos_centroid_intent_to_placement_request(
     """
     Compile high-level MOS centroid intent into a physical placement request.
     """
+    rows, cols = get_resolved_mos_centroid_array_shape(intent)
     group_grid = compile_mos_centroid_intent_to_grid(intent)
+    pattern_strategy = normalize_mos_centroid_pattern_strategy(intent.pattern_strategy)
 
     spec = MosCentroidArraySpec(
         cell_name=intent.cell_name,
         device_a=intent.device_a,
         device_b=intent.device_b,
-        rows=intent.rows,
-        cols=intent.cols,
-        pattern=intent.pattern_style,
+        rows=rows,
+        cols=cols,
+        pattern=pattern_strategy,
     )
 
     return compile_mos_centroid_grid_to_placement_request(
@@ -121,4 +169,5 @@ def compile_mos_centroid_intent_to_placement_request(
         orientation_policy=orientation_policy,
         dummy_policy=dummy_policy,
         spacing_policy=spacing_policy,
+        primitive_options=intent.primitive_options,
     )

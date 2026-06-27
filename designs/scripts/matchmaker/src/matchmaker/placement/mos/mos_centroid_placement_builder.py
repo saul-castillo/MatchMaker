@@ -22,11 +22,17 @@ from matchmaker.placement.mos.mos_group_device_binding import (
 from matchmaker.primitives.gf180_mos_primitive_factory import (
     create_gf180_mos_primitive,
 )
+from matchmaker.primitives.gf180_mos_primitive_options import (
+    Gf180MosPrimitiveOptions,
+)
 from matchmaker.specs.mos_centroid_array_spec import MosCentroidArraySpec
 from matchmaker.specs.mos_device_spec import MosDeviceSpec
 
 
 def get_component_bbox_size(component) -> tuple[float, float]:
+    """
+    Return component bounding-box width and height.
+    """
     (xmin, ymin), (xmax, ymax) = component.bbox
     return float(xmax - xmin), float(ymax - ymin)
 
@@ -34,6 +40,8 @@ def get_component_bbox_size(component) -> tuple[float, float]:
 def assign_component_name(component, name: str):
     """
     Give a generated gLayout/gdsfactory component a stable hierarchy name.
+
+    This avoids unnamed-cell warnings when writing GDS.
     """
     try:
         component.name = name
@@ -50,10 +58,8 @@ def orient_mos_reference_for_centroid_tile(ref, orientation: str):
     """
     Apply geometric orientation to a MOS reference.
 
-    This function intentionally applies only geometry transforms.
-
-    Port-name normalization is routing-facing behavior and should be handled
-    later by the routing layer using tile.orientation and the placed reference.
+    This is intentionally geometry-only. Port-name normalization belongs in
+    the future routing layer, not in the placement-only builder.
     """
     if orientation == "R0":
         return ref
@@ -72,6 +78,7 @@ def orient_mos_reference_for_centroid_tile(ref, orientation: str):
 
     raise NotImplementedError(f"Unsupported orientation: {orientation}")
 
+
 def get_mos_device_for_placement_tile(
     tile: Tile,
     device_by_group: MosGroupDeviceMap,
@@ -79,6 +86,10 @@ def get_mos_device_for_placement_tile(
 ) -> MosDeviceSpec:
     """
     Resolve which MOS device spec should be used for one placement tile.
+
+    Active tiles use the group/device binding.
+    Dummy tiles use a reference device so their size matches the array family.
+    Empty tiles should be skipped before this function is called.
     """
     if tile.role == "active":
         return get_active_device_for_tile_group(
@@ -102,6 +113,10 @@ def get_mos_dummy_configuration_for_placement_tile(
 ) -> tuple[bool, bool]:
     """
     Return the primitive-level dummy configuration for a placement tile.
+
+    Active tiles use the selected MOS dummy policy.
+    Dummy tiles are forced to have both primitive dummies enabled.
+    Empty tiles should be skipped before this function is called.
     """
     if tile.role == "dummy":
         return (True, True)
@@ -124,14 +139,17 @@ def create_mos_unit_cache_for_placement_plan(
     plan: PlacementPlan,
     dummy_policy: MosDummyPolicy,
     device_by_group: MosGroupDeviceMap,
+    primitive_options: Gf180MosPrimitiveOptions,
 ) -> dict[tuple[str, str, tuple[bool, bool]], Component]:
     """
     Create and cache MOS unit cells needed by the placement plan.
 
     Cache key:
         (tile_role, cache_group, (left_dummy, right_dummy))
+
+    This prevents regenerating the same MOS primitive for every tile.
     """
-    unit_cache = {}
+    unit_cache: dict[tuple[str, str, tuple[bool, bool]], Component] = {}
     dummy_reference_device = spec.device_a
 
     for tile in plan.tiles:
@@ -159,6 +177,7 @@ def create_mos_unit_cache_for_placement_plan(
         unit = create_gf180_mos_primitive(
             device=device,
             dummies=dummies,
+            primitive_options=primitive_options,
         )
 
         unit_name = (
@@ -180,6 +199,9 @@ def calculate_pitch_from_unit_cache(
     unit_cache: dict[tuple[str, str, tuple[bool, bool]], Component],
     spacing_policy: TileSpacingPolicy,
 ) -> tuple[float, float]:
+    """
+    Calculate placement pitch from cached MOS unit sizes.
+    """
     unit_widths = []
     unit_heights = []
 
@@ -201,6 +223,7 @@ def build_mos_centroid_placement(
     dummy_policy: MosDummyPolicy | None = None,
     spacing_policy: TileSpacingPolicy | None = None,
     device_by_group: MosGroupDeviceMap | None = None,
+    primitive_options: Gf180MosPrimitiveOptions | None = None,
 ) -> Component:
     """
     Build a placement-only MOS common-centroid array from a PlacementPlan.
@@ -209,6 +232,8 @@ def build_mos_centroid_placement(
         active -> placed using the tile group/device binding
         dummy  -> placed as a MOS dummy tile
         empty  -> skipped
+
+    This builder does not route, label, run DRC/LVS, or normalize ports.
     """
     if spec.device_a.kind != spec.device_b.kind:
         raise ValueError("device_a and device_b must have the same MOS kind for now")
@@ -226,6 +251,9 @@ def build_mos_centroid_placement(
     if spacing_policy is None:
         spacing_policy = TileSpacingPolicy(kind="bbox_plus_margin")
 
+    if primitive_options is None:
+        primitive_options = Gf180MosPrimitiveOptions()
+
     if device_by_group is None:
         device_by_group = create_mos_group_device_map_from_centroid_spec(spec)
 
@@ -239,6 +267,7 @@ def build_mos_centroid_placement(
         plan=plan,
         dummy_policy=dummy_policy,
         device_by_group=device_by_group,
+        primitive_options=primitive_options,
     )
 
     x_pitch, y_pitch = calculate_pitch_from_unit_cache(
@@ -316,4 +345,5 @@ def build_mos_centroid_placement_from_request(
         dummy_policy=request.dummy_policy,
         spacing_policy=request.spacing_policy,
         device_by_group=request.device_by_group,
+        primitive_options=request.primitive_options,
     )

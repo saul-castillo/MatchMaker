@@ -14,6 +14,9 @@ from matchmaker.placement.mos.mos_centroid_placement_builder import (
     build_mos_centroid_placement_from_request,
 )
 from matchmaker.specs.mos_device_spec import MosDeviceSpec
+from matchmaker.primitives.gf180_mos_primitive_options import (
+    Gf180MosPrimitiveOptions,
+)
 
 
 DESIGNS_ROOT = Path("/foss/designs")
@@ -46,8 +49,17 @@ def main() -> None:
         device_b=nfet_b,
         rows=2,
         cols=6,
-        pattern_style="abba",
+        pattern_strategy="common centroid",
         dummy_tile_strategy="center_pair",
+        primitive_options=Gf180MosPrimitiveOptions(
+            with_substrate_tap=None,
+            with_tie=None,
+            with_dnwell=None,
+            with_guardring=None,
+            sd_route_topmet=None,
+            gate_route_topmet=None,
+            interfinger_routing=None,
+        ),
     )
 
     group_grid = compile_mos_centroid_intent_to_grid(intent)

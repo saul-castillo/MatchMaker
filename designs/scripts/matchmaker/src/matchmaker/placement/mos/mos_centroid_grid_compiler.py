@@ -12,6 +12,9 @@ from matchmaker.placement.mos.mos_group_device_binding import (
     MosGroupDeviceMap,
     create_mos_group_device_map_from_centroid_spec,
 )
+from matchmaker.primitives.gf180_mos_primitive_options import (
+    Gf180MosPrimitiveOptions,
+)
 from matchmaker.specs.mos_centroid_array_spec import MosCentroidArraySpec
 
 
@@ -22,12 +25,10 @@ def compile_mos_centroid_grid_to_placement_request(
     dummy_policy: MosDummyPolicy | None = None,
     spacing_policy: TileSpacingPolicy | None = None,
     device_by_group: MosGroupDeviceMap | None = None,
+    primitive_options: Gf180MosPrimitiveOptions | None = None,
 ) -> MosCentroidPlacementRequest:
     """
     Compile an explicit MOS centroid grid into a placement request.
-
-    The grid is placement IR. Most future high-level flows should generate this
-    grid from intent rather than requiring users to write it manually.
     """
     if dummy_policy is None:
         dummy_policy = MosDummyPolicy(kind="edge_only")
@@ -37,6 +38,9 @@ def compile_mos_centroid_grid_to_placement_request(
 
     if device_by_group is None:
         device_by_group = create_mos_group_device_map_from_centroid_spec(spec)
+
+    if primitive_options is None:
+        primitive_options = Gf180MosPrimitiveOptions()
 
     plan = make_placement_plan_from_group_grid(
         cell_name=spec.cell_name,
@@ -50,6 +54,7 @@ def compile_mos_centroid_grid_to_placement_request(
         device_by_group=device_by_group,
         dummy_policy=dummy_policy,
         spacing_policy=spacing_policy,
+        primitive_options=primitive_options,
     )
 
     validate_mos_centroid_placement_request(request)

@@ -4,6 +4,9 @@ from matchmaker.placement.core.spacing_policy import TileSpacingPolicy
 from matchmaker.placement.core.tile_plan import PlacementPlan
 from matchmaker.placement.mos.mos_dummy_policy import MosDummyPolicy
 from matchmaker.placement.mos.mos_group_device_binding import MosGroupDeviceMap
+from matchmaker.primitives.gf180_mos_primitive_options import (
+    Gf180MosPrimitiveOptions,
+)
 from matchmaker.specs.mos_centroid_array_spec import MosCentroidArraySpec
 
 
@@ -11,9 +14,6 @@ from matchmaker.specs.mos_centroid_array_spec import MosCentroidArraySpec
 class MosCentroidPlacementRequest:
     """
     Complete input package for MOS centroid placement.
-
-    This is the object future spec-to-layout code should produce before handing
-    work to the physical placement builder.
     """
 
     spec: MosCentroidArraySpec
@@ -24,6 +24,9 @@ class MosCentroidPlacementRequest:
     )
     spacing_policy: TileSpacingPolicy = field(
         default_factory=lambda: TileSpacingPolicy(kind="bbox_plus_margin")
+    )
+    primitive_options: Gf180MosPrimitiveOptions = field(
+        default_factory=Gf180MosPrimitiveOptions
     )
 
 

@@ -38,3 +38,11 @@ temp/
 .devcontainer/
 tools/
 context/
+
+# MatchMaker local external source checkouts
+designs/.external/
+
+# MatchMaker generated layout artifacts
+designs/libs/core_analog/*/gds/
+designs/libs/core_analog/*/netlist/
+designs/libs/core_analog/*/reports/
