@@ -1,87 +1,177 @@
 # MatchMaker
 
-Common-centroid layout generation for matched analog structures in GF180 using gLayout.
+MatchMaker is a spec-driven analog layout automation project for the SSCS Chipathon Track D analog/LLM flow. The project focuses on deterministic generation of matched analog structures in GF180 using gLayout.
 
-MatchMaker is a Chipathon Track D project developed by Team Los Pollos Hermanos. The project implements a layout generator for small matched-device structures, beginning with GF180 NFET arrays and extending to matched transistor blocks such as differential pairs and current mirrors.
+The current milestone is a package-based placement engine for MOS centroid arrays. It translates structured layout intent into an internal tile plan, instantiates GF180 MOS primitives, and writes GDS output into the Chipathon template library structure.
 
 ## Overview
 
-Analog layout often requires devices to be placed with controlled symmetry, orientation, and proximity in order to reduce systematic mismatch. MatchMaker addresses this placement problem by generating common-centroid structures programmatically rather than placing each unit device by hand.
+Analog layout depends heavily on matching, symmetry, orientation, proximity, and later routing balance. MatchMaker addresses the placement portion of that problem first by generating matched-device arrays programmatically rather than placing each unit device by hand.
 
-The first version of the generator produces parameterized NFET common-centroid arrays, including the 2-by-2 and 2-by-4 structures used for initial testing. These primitive arrays are also used to generate higher-level matched transistor blocks. The generated layouts are written through gLayout and can be inspected as GDS outputs.
-
-The project is currently centered on reliable placement generation and layout metadata. Routing, DRC, and LVS are handled as follow-on verification steps around the generated structures.
-
-## Implementation status
-
-The current generator includes the base primitive flow and first matched-block flow.
-
-| Area                                     | Status                     |
-| ---------------------------------------- | -------------------------- |
-| GF180 and gLayout setup                  | Complete                   |
-| Parameterized NFET array generation      | Complete                   |
-| 2-by-2 common-centroid primitive         | Complete                   |
-| 2-by-4 common-centroid primitive         | Complete                   |
-| Differential-pair style block generation | Complete                   |
-| Current-mirror style block generation    | Complete                   |
-| Dummy-aware placement support            | Complete                   |
-| Placement and terminal metadata          | Initial version complete   |
-| Routing support                          | Next milestone             |
-| DRC and LVS validation                   | Next milestone             |
-| Larger circuit integration               | Planned after verification |
-
-## Generator scope
-
-The generator currently operates on matched NFET structures in GF180. It controls the physical arrangement of unit devices, including array dimensions, placement order, device orientation, spacing, dummy placement, and exposed terminals.
-
-The intended output is not only a visible layout, but also a repeatable layout structure that can be used as the basis for routing and verification. This keeps the project focused on the matched-device portion of analog layout before expanding into full block-level layout generation.
-
-## Development path
-
-The first development stage produced the primitive common-centroid array generator. This stage is implemented for the initial 2-by-2 and 2-by-4 NFET cases.
-
-The second stage produced matched transistor blocks using the primitive array generator. This includes differential-pair and current-mirror style layouts.
-
-The next stage is verification and integration. The main work here is routing support, port organization, regression checks, DRC, and LVS. After that, the generated blocks can be tested inside a larger analog or mixed-signal design.
-
-Future circuit targets include LDO bias structures, comparator input-pair layouts, and CDAC or unit-capacitor array experiments.
-
-## CDAC and SAR ADC collaboration
-
-A possible follow-on target is a capacitor array generator for the SAR ADC group. The CDAC is a strong candidate because its layout depends heavily on matching, symmetry, array structure, and routing discipline.
-
-Before starting that block, the required information from the ADC team is the ADC resolution, unit capacitor geometry, array topology, matching target, routing constraints, block interface, and expected handoff format.
-
-## Repository structure
+The current flow is:
 
 ```text
-.
-├── README.md
-├── notebooks/
-│   └── generator tests and layout demos
-├── scripts/
-│   └── standalone generation scripts
-├── src/
-│   └── reusable generator code
-├── layouts/
-│   └── generated GDS outputs
-└── docs/
-    └── notes, figures, and design documentation
+MOS centroid intent
+→ internal tile grid
+→ placement request
+→ GF180 MOS primitive placement
+→ GDS output
 ```
 
-The directory structure may change as notebook experiments are moved into reusable source code.
+This is placement-only. Routing, pin labeling, DRC, LVS, and feedback-driven iteration are planned as separate modules.
+
+## Current Status
+
+The current engine supports MOS centroid placement from high-level intent or explicit custom grids. It handles active, dummy, and empty tile roles; group-to-device binding; orientation policies; spacing policies; primitive-level dummy policies; and explicit GF180 MOS primitive options.
+
+The main working demo is:
+
+```bash
+cd /foss/designs
+source scripts/matchmaker/env/setup.sh
+python scripts/matchmaker/examples/placement/build_nfet_centroid_from_intent.py
+```
+
+Generated layouts are written under:
+
+```text
+designs/libs/core_analog/<cell_name>/gds/
+```
+
+## Repository Structure
+
+```text
+designs/
+  libs/
+    core_analog/
+      <generated_cell_name>/
+        gds/
+        netlist/
+        reports/
+          drc/
+          lvs/
+
+  scripts/
+    matchmaker/
+      env/
+        setup.sh
+
+      examples/
+        placement/
+          build_nfet_centroid_from_intent.py
+
+      docs/
+        placement_engine.md
+
+      src/
+        matchmaker/
+          specs/
+          placement/
+          primitives/
+          outputs/
+          routing/
+          verification/
+```
+
+The Python package lives under:
+
+```text
+designs/scripts/matchmaker/src/matchmaker/
+```
+
+Generated circuit artifacts live under:
+
+```text
+designs/libs/core_analog/
+```
+
+## Package Layout
+
+```text
+matchmaker/
+  specs/
+    mos_device_spec.py
+    mos_centroid_array_spec.py
+
+  placement/
+    core/
+      tile_plan.py
+      orientation_policy.py
+      spacing_policy.py
+      custom_grid_planner.py
+
+    mos/
+      mos_centroid_array_intent.py
+      mos_centroid_intent_compiler.py
+      mos_centroid_grid_compiler.py
+      mos_centroid_placement_request.py
+      mos_centroid_placement_builder.py
+      mos_dummy_policy.py
+      mos_group_device_binding.py
+
+    capacitors/
+    resistors/
+
+  primitives/
+    gf180_mos_primitive_factory.py
+    gf180_mos_primitive_options.py
+
+  outputs/
+    core_analog_cell_paths.py
+
+  routing/
+    intents/
+    planners/
+    routers/
+
+  verification/
+    drc/
+    lvs/
+    feedback/
+```
+
+## Architecture
+
+`specs/` defines structured descriptions of devices and resolved array specifications.
+
+`placement/core/` contains reusable placement infrastructure: tiles, placement plans, orientation policies, spacing policies, and grid conversion. This layer is intentionally not MOS-specific.
+
+`placement/mos/` contains MOS-specific centroid placement logic, including intent compilation, dummy handling, group-to-device binding, and the MOS placement builder.
+
+`primitives/` creates PDK-specific geometry. The current implementation targets GF180 MOS primitives through gLayout.
+
+`outputs/` manages generated file paths.
+
+`routing/` and `verification/` are reserved for the next major stages: smart routing, DRC/LVS execution, report parsing, and feedback-driven layout iteration.
+
+## Design Direction
+
+MatchMaker is intended to grow as a structured generator, not a collection of independent scripts. High-level intent should describe what is needed. Deterministic planners should translate that intent into spatial representations. Builders should instantiate geometry. Verification modules should eventually close the loop.
+
+The tile grid is an internal placement representation. It is useful because placement is spatial, but it is not intended to be the only long-term interface. Standard placement strategies and explicit custom grids are both supported.
+
+## Current Limitations
+
+The engine does not yet perform routing, top-level pin creation, DRC, LVS, verification feedback, capacitor-array generation, resistor-array generation, or CDAC layout generation.
+
+Guard-ring or tap geometry may appear in generated GDS through the underlying GF180/gLayout MOS primitive behavior. MatchMaker does not yet implement an explicit array-level isolation policy.
+
+## Near-Term Roadmap
+
+The next development stage is to stabilize the placement strategy interface, add explicit isolation policy, add PFET demos, and begin the routing-intent layer. DRC/LVS runners and feedback parsing should follow after the routing interface is defined.
+
+Longer-term targets include matched transistor subblocks, capacitor arrays, CDAC layout support, and reusable verified analog layout cells.
 
 ## Team
 
 Team Los Pollos Hermanos
-Chipathon Track D
-AI and LLM for Analog Circuits
+SSCS Chipathon Track D: AI and LLM for Analog Circuits
 
-| Name or Discord | Github         | Affiliation              | Role                             |
-| --------------- | -------------- | ------------------------ | -------------------------------- |
-| s_a_castillo    | @saul-castillo | Brown University, EE '28 | Team lead and layout automation  |
-| Zeke_956        | @zeke956       | Brown University, EE '28 | DRC and LVS verification support |
-| Cpg_49          | @[TBA]         | Brown University, ME '28 | Demo integration and testing     |
+| Name / Handle | GitHub         | Affiliation              | Role                                |
+| ------------- | -------------- | ------------------------ | ----------------------------------- |
+| s_a_castillo  | @saul-castillo | Brown University, EE '28 | Team Lead and Layout Automation     |
+| Zeke_956      | @zeke956       | Brown University, EE '28 | DRC/LVS Verification Support        |
+| .nthony       | @nthony237     | Brown University, ME '28 | LLM & Natural Language Integration  |
 
 ## Links
 
