@@ -6,6 +6,7 @@
 
 export DESIGNS_ROOT="${DESIGNS_ROOT:-/foss/designs}"
 export GLAYOUT_DIR="${GLAYOUT_DIR:-$DESIGNS_ROOT/.external/gLayout}"
+export PYTHONPATH="/foss/designs/scripts/matchmaker/src:${PYTHONPATH}"
 
 # gLayout Python source checkout
 if [ -d "$GLAYOUT_DIR/src/glayout" ]; then
