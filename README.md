@@ -146,7 +146,7 @@ matchmaker/
 
 ## Design Direction
 
-MatchMaker is intended to grow as a structured generator, not a collection of independent scripts. High-level intent should describe what is needed. Deterministic planners should translate that intent into spatial representations. Builders should instantiate geometry. Verification modules should eventually close the loop.
+MatchMaker is intended to grow as a structured generator. High-level intent should describe what is needed. Deterministic planners should translate that intent into spatial representations. Builders should instantiate geometry. Verification modules should eventually close the loop.
 
 The tile grid is an internal placement representation. It is useful because placement is spatial, but it is not intended to be the only long-term interface. Standard placement strategies and explicit custom grids are both supported.
 
