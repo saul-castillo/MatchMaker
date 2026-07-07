@@ -1,3 +1,3 @@
 """
-Future DRC/LVS verification and feedback package.
+DRC/LVS verification runners, parsers, and future feedback integration.
 """
