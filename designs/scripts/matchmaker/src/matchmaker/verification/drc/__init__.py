@@ -1,3 +1,3 @@
 """
-Future DRC runners and parsers.
+DRC runners and result parsers.
 """
