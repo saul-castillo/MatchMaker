@@ -1,3 +1,3 @@
 """
-Future LVS runners and parsers.
+LVS extraction, comparison, and result parsing.
 """
