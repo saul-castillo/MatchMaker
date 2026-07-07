@@ -1,3 +1,3 @@
 """
-Future routing-intent definitions.
+Structured routing-intent definitions.
 """
