@@ -1,3 +1,3 @@
 """
-Future route-planning modules.
+Deterministic route-planning modules.
 """
