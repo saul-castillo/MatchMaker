@@ -114,7 +114,7 @@ def main() -> int:
         if extraction.failure_reason is not None:
             print(f"extraction failure: {extraction.failure_reason}")
 
-    print(f"overall passed: {verification.passed}")
+    print(f"pre-LVS checks passed: {verification.passed}")
     return 0 if verification.passed else 1
 
 
