@@ -63,6 +63,8 @@ def build_routed_demo():
         net_name="A_gate_pair",
         source=RouteEndpoint(instance_name="A0", port_name="gate_E"),
         target=RouteEndpoint(instance_name="A1", port_name="gate_E"),
+        avoid_obstacles=True,
+        obstacle_clearance=0.2,
     )
     executed = route_point_to_point_intent(
         component=top,
@@ -93,6 +95,7 @@ def main() -> int:
     top.write_gds(str(paths.final_gds))
 
     print(f"route strategy: {executed.plan.strategy}")
+    print(f"straight-route blockers: {executed.blockers or '(none)'}")
     print(f"GDS: {paths.final_gds}")
 
     if args.skip_verification:
