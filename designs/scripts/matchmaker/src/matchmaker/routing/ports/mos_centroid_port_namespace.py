@@ -16,6 +16,14 @@ def _get_component_references(component) -> list:
     raise TypeError("Component does not expose references or instances")
 
 
+def _reference_bbox(reference) -> tuple[tuple[float, float], tuple[float, float]]:
+    (xmin, ymin), (xmax, ymax) = reference.bbox
+    return (
+        (float(xmin), float(ymin)),
+        (float(xmax), float(ymax)),
+    )
+
+
 def expose_mos_centroid_tile_ports(
     component,
     plan: PlacementPlan,
@@ -24,12 +32,8 @@ def expose_mos_centroid_tile_ports(
     """
     Promote each placed MOS tile reference port into a stable top-level namespace.
 
-    Example:
-        A0 + gate_E -> A0__gate_E
-
-    The current MOS placement builder adds exactly one top-level reference for each
-    non-empty placement tile, in plan order. This adapter validates that invariant
-    before promoting ports.
+    The adapter also records one bounding box per tile. The routing layer uses
+    those bounds to reject unsafe straight-line routes through other devices.
     """
     placeable_tiles = [tile for tile in plan.tiles if tile.role != "empty"]
     references = _get_component_references(component)
@@ -40,12 +44,20 @@ def expose_mos_centroid_tile_ports(
             f"references={len(references)}, tiles={len(placeable_tiles)}"
         )
 
+    obstacles = []
     for tile, reference in zip(placeable_tiles, references):
         prefix = f"{tile.name}{separator}"
         component.add_ports(reference.get_ports_list(), prefix=prefix)
+        obstacles.append(
+            {
+                "instance_name": tile.name,
+                "bbox": _reference_bbox(reference),
+            }
+        )
 
     component.info["matchmaker_port_separator"] = separator
     component.info["matchmaker_routing_instances"] = tuple(
         tile.name for tile in placeable_tiles
     )
+    component.info["matchmaker_routing_obstacles"] = tuple(obstacles)
     return component
