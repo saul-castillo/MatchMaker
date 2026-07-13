@@ -1,10 +1,8 @@
 import unittest
 
-from matchmaker.verification.drc.magic_drc import (
-    _magic_loaded_target_cell,
-    _parse_drc_count,
-)
+from matchmaker.verification.drc.magic_drc import _parse_drc_count
 from matchmaker.verification.lvs.magic_netgen_lvs import _netgen_output_passed
+from matchmaker.verification.magic_support import magic_loaded_target_cell
 
 
 class VerificationParserTests(unittest.TestCase):
@@ -29,8 +27,8 @@ class VerificationParserTests(unittest.TestCase):
             "Cell demo couldn't be read\n"
             "Total DRC errors found: 0\n"
         )
-        self.assertTrue(_magic_loaded_target_cell(valid, "demo"))
-        self.assertFalse(_magic_loaded_target_cell(invalid, "demo"))
+        self.assertTrue(magic_loaded_target_cell(valid, "demo"))
+        self.assertFalse(magic_loaded_target_cell(invalid, "demo"))
 
     def test_netgen_unique_match_passes(self):
         self.assertTrue(_netgen_output_passed("Circuits match uniquely.\n.\n"))
