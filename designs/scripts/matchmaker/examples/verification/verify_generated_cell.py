@@ -7,7 +7,7 @@ from matchmaker.verification.generated_cell_verifier import verify_generated_cel
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Run MatchMaker DRC and extraction for a generated cell."
+        description="Run MatchMaker pre-LVS DRC and extraction for a generated cell."
     )
     parser.add_argument("cell_name")
     parser.add_argument(
@@ -40,7 +40,7 @@ def main() -> int:
         if result.extraction.failure_reason is not None:
             print(f"extraction failure: {result.extraction.failure_reason}")
 
-    print(f"overall passed: {result.passed}")
+    print(f"pre-LVS checks passed: {result.passed}")
 
     if not result.passed:
         failed_process = (
