@@ -5,7 +5,10 @@ import re
 from matchmaker.verification.process_runner import ProcessResult, run_process
 
 
-_DRC_COUNT_PATTERN = re.compile(r"MATCHMAKER_DRC_COUNT=(\d+)")
+_DRC_COUNT_PATTERN = re.compile(
+    r"(?:MATCHMAKER_DRC_COUNT=|Total DRC errors found:\s*)(\d+)",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -35,7 +38,10 @@ def _magic_drc_tcl(gds_path: Path, cell_name: str, tech_name: str | None) -> str
             f"load {cell_name}",
             "select top cell",
             "drc catchup",
-            'puts "MATCHMAKER_DRC_COUNT=[drc count total]"',
+            # Magic prints the numeric result to stdout; it does not return the
+            # count as the Tcl command value.
+            "drc count total",
+            'puts "MATCHMAKER_DRC_COMPLETED=1"',
             "quit -noprompt",
         ]
     )
@@ -47,6 +53,18 @@ def _parse_drc_count(output: str) -> int | None:
     if not matches:
         return None
     return int(matches[-1])
+
+
+def _magic_loaded_target_cell(output: str, cell_name: str) -> bool:
+    if f'Reading "{cell_name}".' not in output:
+        return False
+
+    fatal_fragments = (
+        "Don't know how to read GDS-II",
+        f"Cell {cell_name} couldn't be read",
+        'Using technology "minimum"',
+    )
+    return not any(fragment in output for fragment in fatal_fragments)
 
 
 def run_magic_drc(
@@ -80,7 +98,11 @@ def run_magic_drc(
     report_path.write_text(process.combined_output + "\n")
 
     violation_count = _parse_drc_count(process.combined_output)
-    passed = process.returncode == 0 and violation_count == 0
+    passed = (
+        process.returncode == 0
+        and violation_count == 0
+        and _magic_loaded_target_cell(process.combined_output, cell_name)
+    )
 
     return MagicDrcResult(
         passed=passed,
