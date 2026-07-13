@@ -4,6 +4,9 @@ from typing import Iterable
 from matchmaker.routing.intents.point_to_point_route_intent import (
     PointToPointRouteIntent,
 )
+from matchmaker.routing.planners.obstacle_aware_route_planner import (
+    apply_obstacle_avoidance,
+)
 from matchmaker.routing.planners.point_to_point_route_planner import (
     PointToPointRoutePlan,
     plan_point_to_point_route,
@@ -25,6 +28,7 @@ except Exception:
 class ExecutedRoute:
     plan: PointToPointRoutePlan
     route_reference: object
+    blockers: tuple[str, ...] = ()
 
 
 def _build_route_component(pdk, plan, source_port, target_port, route_kwargs):
@@ -67,6 +71,19 @@ def route_point_to_point_intent(
         target_port=target_port,
         separator=separator,
     )
+
+    blockers: tuple[str, ...] = ()
+    if intent.avoid_obstacles:
+        plan, blockers = apply_obstacle_avoidance(
+            plan=plan,
+            source_port=source_port,
+            target_port=target_port,
+            obstacles=component.info.get("matchmaker_routing_obstacles", ()),
+            source_instance_name=intent.source.instance_name,
+            target_instance_name=intent.target.instance_name,
+            clearance=float(intent.obstacle_clearance),
+        )
+
     route_component = _build_route_component(
         pdk=pdk,
         plan=plan,
@@ -83,11 +100,16 @@ def route_point_to_point_intent(
             "source": plan.source_top_port_name,
             "target": plan.target_top_port_name,
             "strategy": plan.strategy,
+            "blockers": blockers,
         }
     )
     component.info["matchmaker_routes"] = tuple(route_log)
 
-    return ExecutedRoute(plan=plan, route_reference=route_reference)
+    return ExecutedRoute(
+        plan=plan,
+        route_reference=route_reference,
+        blockers=blockers,
+    )
 
 
 def route_point_to_point_intents(
