@@ -101,7 +101,7 @@ def run_magic_extraction(
             magic_bin=config.magic_bin,
             startup_file=config.startup_file,
         ),
-        cwd=gds_path.parent,
+        cwd=output_netlist_path.parent,
         timeout_s=config.timeout_s,
         input_text=_magic_extract_tcl(
             gds_path=gds_path,
