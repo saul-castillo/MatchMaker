@@ -19,6 +19,8 @@ from matchmaker.verification.extraction.magic_extraction import (
 
 @dataclass(frozen=True)
 class GeneratedCellVerificationResult:
+    """Pre-LVS verification result for DRC and optional extraction stages."""
+
     passed: bool
     paths: CoreAnalogCellPaths
     drc: MagicDrcResult
