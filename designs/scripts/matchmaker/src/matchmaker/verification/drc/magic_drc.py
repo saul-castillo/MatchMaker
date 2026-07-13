@@ -1,7 +1,13 @@
 from dataclasses import dataclass
 from pathlib import Path
 import re
+from typing import Mapping
 
+from matchmaker.verification.magic_support import (
+    build_magic_argv,
+    build_magic_environment,
+    magic_loaded_target_cell,
+)
 from matchmaker.verification.process_runner import ProcessResult, run_process
 
 
@@ -16,6 +22,9 @@ class MagicDrcConfig:
     magic_bin: str = "magic"
     tech_name: str | None = None
     startup_file: Path | None = None
+    pdk_name: str | None = "gf180mcuD"
+    pdk_root: Path | None = Path("/foss/pdks")
+    environment: Mapping[str, str] | None = None
     timeout_s: float = 300.0
 
 
@@ -27,6 +36,10 @@ class MagicDrcResult:
     process: ProcessResult
 
 
+def _tcl_path(path: Path) -> str:
+    return "{" + str(path) + "}"
+
+
 def _magic_drc_tcl(gds_path: Path, cell_name: str, tech_name: str | None) -> str:
     commands = []
     if tech_name is not None:
@@ -34,7 +47,7 @@ def _magic_drc_tcl(gds_path: Path, cell_name: str, tech_name: str | None) -> str
 
     commands.extend(
         [
-            f"gds read {gds_path}",
+            f"gds read {_tcl_path(gds_path)}",
             f"load {cell_name}",
             "select top cell",
             "drc catchup",
@@ -55,18 +68,6 @@ def _parse_drc_count(output: str) -> int | None:
     return int(matches[-1])
 
 
-def _magic_loaded_target_cell(output: str, cell_name: str) -> bool:
-    if f'Reading "{cell_name}".' not in output:
-        return False
-
-    fatal_fragments = (
-        "Don't know how to read GDS-II",
-        f"Cell {cell_name} couldn't be read",
-        'Using technology "minimum"',
-    )
-    return not any(fragment in output for fragment in fatal_fragments)
-
-
 def run_magic_drc(
     gds_path: Path,
     cell_name: str,
@@ -81,18 +82,22 @@ def run_magic_drc(
     if not gds_path.is_file():
         raise FileNotFoundError(f"GDS file not found: {gds_path}")
 
-    argv = [config.magic_bin, "-dnull", "-noconsole"]
-    if config.startup_file is not None:
-        argv.extend(["-r", str(config.startup_file.resolve())])
-
     process = run_process(
-        argv=argv,
+        argv=build_magic_argv(
+            magic_bin=config.magic_bin,
+            startup_file=config.startup_file,
+        ),
         cwd=gds_path.parent,
         timeout_s=config.timeout_s,
         input_text=_magic_drc_tcl(
             gds_path=gds_path,
             cell_name=cell_name,
             tech_name=config.tech_name,
+        ),
+        env=build_magic_environment(
+            pdk_name=config.pdk_name,
+            pdk_root=config.pdk_root,
+            extra_env=config.environment,
         ),
     )
     report_path.write_text(process.combined_output + "\n")
@@ -101,7 +106,8 @@ def run_magic_drc(
     passed = (
         process.returncode == 0
         and violation_count == 0
-        and _magic_loaded_target_cell(process.combined_output, cell_name)
+        and "MATCHMAKER_DRC_COMPLETED=1" in process.combined_output
+        and magic_loaded_target_cell(process.combined_output, cell_name)
     )
 
     return MagicDrcResult(
