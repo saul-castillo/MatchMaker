@@ -17,6 +17,12 @@ def main() -> int:
         default=Path(os.environ.get("DESIGNS_ROOT", "/foss/designs")),
     )
     parser.add_argument("--limit", type=int, default=50)
+    parser.add_argument(
+        "--shared-net-min",
+        type=int,
+        default=2,
+        help="Show nets used by at least this many top-level X instances.",
+    )
     args = parser.parse_args()
 
     paths = create_core_analog_cell_paths(args.designs_root, args.cell_name)
@@ -43,8 +49,19 @@ def main() -> int:
     print(f"top device statements: {len(top.device_statements)}")
     print(f"top MOS statements: {len(top.mos_statements)}")
     print(f"top subcircuit instances: {len(top.subcircuit_instance_statements)}")
-    print("\n--- top-level device statements ---")
 
+    shared_nets = top.shared_instance_nets(args.shared_net_min)
+    print(f"shared top-instance nets: {len(shared_nets)}")
+    for net_name, instance_names in sorted(
+        shared_nets.items(),
+        key=lambda item: (-len(item[1]), item[0]),
+    ):
+        print(
+            f"  {net_name}: {len(instance_names)} instances -> "
+            + ", ".join(instance_names)
+        )
+
+    print("\n--- top-level device statements ---")
     for statement in top.device_statements[: args.limit]:
         print(statement)
 
