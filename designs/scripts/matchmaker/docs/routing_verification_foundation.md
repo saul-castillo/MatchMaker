@@ -55,7 +55,7 @@ Use `--skip-verification` to generate only the GDS.
 python scripts/matchmaker/examples/verification/verify_generated_cell.py CELL_NAME
 ```
 
-Use `--drc-only` to skip extraction.
+Use `--drc-only` to skip extraction. A successful result means the requested pre-LVS stages completed; it does not claim schematic connectivity is correct.
 
 Standard artifacts are written under:
 
@@ -82,7 +82,15 @@ The parser accepts Magic's native `Total DRC errors found: N` output.
 
 ## Extraction criteria
 
-`run_magic_extraction(...)` removes stale output first, reads the requested GDS cell, runs `extract all`, writes an ngspice-compatible LVS netlist, and returns a structured failure reason when any stage is incomplete.
+`run_magic_extraction(...)` removes stale output first, reads the requested GDS cell, runs `extract all`, writes an ngspice-compatible LVS netlist, and returns a structured failure reason when any stage is incomplete. Extraction scratch files are kept in the cell netlist directory rather than beside the GDS.
+
+Inspect the extracted top-level hierarchy with:
+
+```bash
+python scripts/matchmaker/examples/verification/inspect_extracted_netlist.py CELL_NAME
+```
+
+This prints the top subcircuit ports and device/instance statements without requiring a notebook.
 
 ## LVS flow
 
@@ -104,6 +112,8 @@ The GF180 Netgen setup file is resolved automatically from either the direct `/f
 
 The LVS parser accepts only an unqualified unique circuit match. Mismatch, property-error, and port-error outcomes fail.
 
+Missing executables and process timeouts are returned as structured failures rather than uncaught subprocess exceptions.
+
 ## Tests
 
 ```bash
@@ -111,5 +121,7 @@ cd /foss/designs
 source scripts/matchmaker/env/setup.sh
 python -m unittest discover -s scripts/matchmaker/tests -v
 ```
+
+A GitHub Actions workflow also runs the pure unit tests and Python compilation for MatchMaker changes.
 
 The next routing milestone is connectivity-driven obstacle avoidance: extract the current centroid route, establish which device gates share the routed node, then reject straight candidates that cross non-endpoint device access geometry.
