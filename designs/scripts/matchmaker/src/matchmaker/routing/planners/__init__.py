@@ -1,3 +1,3 @@
 """
-Deterministic route-planning modules.
+Pure geometric and obstacle-aware route planning.
 """
