@@ -1,0 +1,34 @@
+name: MatchMaker unit tests
+
+on:
+  push:
+    paths:
+      - "designs/scripts/matchmaker/**"
+      - ".github/workflows/matchmaker-unit-tests.yml"
+  pull_request:
+    paths:
+      - "designs/scripts/matchmaker/**"
+      - ".github/workflows/matchmaker-unit-tests.yml"
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run pure Python tests
+        env:
+          PYTHONPATH: designs/scripts/matchmaker/src
+        run: >-
+          python -m unittest discover
+          -s designs/scripts/matchmaker/tests
+          -p 'test_*.py'
+          -v
+      - name: Compile source and examples
+        run: >-
+          python -m compileall -q
+          designs/scripts/matchmaker/src
+          designs/scripts/matchmaker/examples
+          designs/scripts/matchmaker/tests
