@@ -31,9 +31,13 @@ class PointToPointRouteIntent:
     target: RouteEndpoint
     strategy: RouteStrategy = "auto"
     route_kwargs: Mapping[str, object] = field(default_factory=dict)
+    avoid_obstacles: bool = True
+    obstacle_clearance: float = 0.0
 
     def __post_init__(self) -> None:
         if not self.net_name:
             raise ValueError("net_name must be non-empty")
         if self.source == self.target:
             raise ValueError("source and target endpoints must be different")
+        if self.obstacle_clearance < 0:
+            raise ValueError("obstacle_clearance must be non-negative")
