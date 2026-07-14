@@ -99,7 +99,7 @@ def main() -> int:
     print(f"actual source access: {executed.plan.source_top_port_name}")
     print(f"actual target access: {executed.plan.target_top_port_name}")
     print(f"detour direction: {executed.detour_direction or '(none)'}")
-    print(f"detour extension: {executed.detour_extension}")
+    print(f"detour channel coordinate: {executed.detour_channel_coordinate}")
     print(f"GDS: {paths.final_gds}")
 
     if args.skip_verification:
