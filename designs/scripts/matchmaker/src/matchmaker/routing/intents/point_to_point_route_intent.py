@@ -24,7 +24,12 @@ class RouteEndpoint:
 
 @dataclass(frozen=True)
 class PointToPointRouteIntent:
-    """Net intent for one two-terminal physical connection."""
+    """Net intent for one two-terminal physical connection.
+
+    When obstacle avoidance is enabled, cardinal MOS terminal ports may be
+    exchanged for equivalent cardinal access points on the same terminal. For
+    example, a blocked ``gate_E`` request may execute through ``gate_N``.
+    """
 
     net_name: str
     source: RouteEndpoint
@@ -32,7 +37,7 @@ class PointToPointRouteIntent:
     strategy: RouteStrategy = "auto"
     route_kwargs: Mapping[str, object] = field(default_factory=dict)
     avoid_obstacles: bool = True
-    obstacle_clearance: float = 0.0
+    obstacle_clearance: float = 1.0
 
     def __post_init__(self) -> None:
         if not self.net_name:
