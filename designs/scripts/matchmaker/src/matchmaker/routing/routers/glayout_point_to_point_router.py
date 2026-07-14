@@ -1,6 +1,7 @@
 from dataclasses import dataclass, replace
 from typing import Iterable
 
+from matchmaker.physical.models import PhysicalDesignSnapshot
 from matchmaker.routing.intents.point_to_point_route_intent import (
     PointToPointRouteIntent,
 )
@@ -84,11 +85,25 @@ def _port(component, port_name: str, endpoint_role: str):
         raise KeyError(f"Unknown routing {endpoint_role} port: {port_name}") from error
 
 
+def _routing_obstacles(
+    component,
+    physical_design: PhysicalDesignSnapshot | None,
+):
+    if physical_design is None:
+        return component.info.get("matchmaker_routing_obstacles", ())
+    if physical_design.component is not component:
+        raise ValueError(
+            "physical_design.component must be the same component passed to the router"
+        )
+    return physical_design.legacy_obstacles()
+
+
 def route_point_to_point_intent(
     component,
     pdk,
     intent: PointToPointRouteIntent,
     separator: str = "__",
+    physical_design: PhysicalDesignSnapshot | None = None,
 ) -> ExecutedRoute:
     requested_source_name = intent.source.top_port_name(separator)
     requested_target_name = intent.target.top_port_name(separator)
@@ -102,7 +117,7 @@ def route_point_to_point_intent(
         separator=separator,
     )
 
-    obstacles = component.info.get("matchmaker_routing_obstacles", ())
+    obstacles = _routing_obstacles(component, physical_design)
     blockers: tuple[str, ...] = ()
     dogleg_plan = None
 
@@ -192,6 +207,7 @@ def route_point_to_point_intents(
     pdk,
     intents: Iterable[PointToPointRouteIntent],
     separator: str = "__",
+    physical_design: PhysicalDesignSnapshot | None = None,
 ) -> tuple[ExecutedRoute, ...]:
     executed_routes = []
     for intent in intents:
@@ -201,6 +217,7 @@ def route_point_to_point_intents(
                 pdk=pdk,
                 intent=intent,
                 separator=separator,
+                physical_design=physical_design,
             )
         )
     return tuple(executed_routes)
