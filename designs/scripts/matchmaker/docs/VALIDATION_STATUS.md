@@ -4,14 +4,15 @@
 
 - MatchMaker environment setup loads successfully.
 - Original 10 routing-planner and verification-parser unit tests passed.
-- The centroid routing demo generated a GDS successfully.
-- The original generated route selected the straight route family.
+- The centroid routing demo generated GDS successfully.
 - GF180 Magic loaded the target GDS and reported zero DRC violations.
 - The corrected DRC adapter returned `passed=True` and `violation_count=0`.
 - Magic successfully extracted the routed centroid GDS to SPICE.
-- Extracted connectivity showed the original straight route net on four top-level instances: both intended A devices and both intervening B devices. The route was DRC-clean but electrically wrong.
+- The original straight route net appeared on four top-level instances: both intended A devices and both intervening B devices. It was DRC-clean but electrically wrong.
+- Bounding-box obstacle detection correctly identified `B0` and `B1` and changed the requested route family to `c`.
+- The first C-route fallback remained electrically wrong: extraction still showed the routed node on the same four instances. Changing only the central metal layer did not prevent the endpoint extensions from crossing the B-device gate access.
 
-## Added after that container run
+## Added after the latest container run
 
 The branch now also includes:
 
@@ -25,14 +26,15 @@ The branch now also includes:
 - expanded pure unit tests and a GitHub Actions workflow;
 - obstacle metadata recorded from placed tile bounding boxes;
 - automatic rejection of blocked straight routes;
-- same-facing blocked routes converted to C-route detours;
-- fail-safe rejection for blocked opposite-facing inline routes until a general channel detour is implemented.
+- automatic selection of equivalent orthogonal terminal access points;
+- a blocked `gate_E` route can execute through `gate_N` or `gate_S` with a channel extension beyond the obstacle row;
+- fail-safe rejection when no clear equivalent access-point detour exists.
 
-The pure unit-test workflow passes on GitHub. The new obstacle-aware physical route still requires a fresh pull and `/foss` rerun before it should be treated as integration-validated.
+The orthogonal-access physical route requires a fresh pull and `/foss` rerun before it should be treated as integration-validated.
 
 ## Not yet demonstrated
 
-- a DRC-clean and extraction-confirmed obstacle-aware reroute of the centroid demo;
-- confirmation that the new route net appears on only the two intended A instances;
+- a DRC-clean orthogonal-access reroute of the centroid demo;
+- extraction showing the rerouted net on only the two intended A instances;
 - a passing Netgen LVS comparison against an independent schematic netlist;
-- general obstacle-aware routing for opposite-facing ports, multi-terminal nets, and symmetry-constrained nets.
+- general multi-terminal, symmetry-constrained, and channel-assignment routing.
