@@ -10,6 +10,7 @@ placement component + placement plan
 → PointToPointRouteIntent
 → geometric route-family plan
 → obstacle check for straight candidates
+→ equivalent access-point selection when blocked
 → gLayout route-family execution
 → routed GDS
 ```
@@ -25,7 +26,7 @@ parallel + same-facing, non-inline → C
 parallel + opposite-facing         → smart-route fallback
 ```
 
-Before executing a straight route, MatchMaker now intersects its centerline against the recorded bounding boxes of all non-endpoint tiles. A blocked same-facing route is converted to a C-route detour. A blocked opposite-facing inline route fails safely with the blocker names until a general channel detour is implemented. Obstacle checks can be disabled explicitly with `avoid_obstacles=False`, but they are enabled by default.
+Before executing a straight route, MatchMaker intersects its centerline against the recorded bounding boxes of all non-endpoint tiles. When blocked, it does not merely change metal layers. It searches equivalent cardinal access points on the same device terminal. For example, a blocked `A0__gate_E` to `A1__gate_E` request can execute through `A0__gate_N` and `A1__gate_N`, with a C-route channel extended beyond the obstacle row. If no clear equivalent access exists, routing fails instead of silently creating a short. Obstacle checks are enabled by default and may be disabled explicitly with `avoid_obstacles=False`.
 
 The routing slice remains point-to-point only. It does not yet solve general channel assignment, multi-terminal topology, balanced differential routing, shielding, or CDAC bus routing.
 
@@ -44,14 +45,15 @@ That single command now:
 ```text
 generates placement
 → detects devices blocking the direct A-gate route
-→ selects a detour
+→ selects equivalent orthogonal gate access
+→ places a channel beyond the blocking row
 → writes GDS
 → runs GF180 Magic DRC
 → extracts layout SPICE
 → writes structured reports
 ```
 
-The command prints both the executed route strategy and the names of devices that blocked the original straight candidate. Use `--skip-verification` to generate only the GDS.
+The command prints the blockers, actual access-port names, detour direction, extension, and executed route strategy. Use `--skip-verification` to generate only the GDS.
 
 ## Verify any generated cell
 
@@ -94,7 +96,7 @@ Inspect the extracted top-level hierarchy with:
 python scripts/matchmaker/examples/verification/inspect_extracted_netlist.py CELL_NAME
 ```
 
-The inspector prints top-level device statements and a shared-net summary. That summary exposed the first straight-route defect: the route node appeared on four device instances instead of only the two intended A instances.
+The inspector prints top-level device statements and a shared-net summary. That summary exposed both the original straight-route defect and the first layer-only C-route defect: each routed node appeared on four device instances instead of only the two intended A instances.
 
 ## LVS flow
 
@@ -128,4 +130,4 @@ python -m unittest discover -s scripts/matchmaker/tests -v
 
 A GitHub Actions workflow also runs the pure unit tests and Python compilation for MatchMaker changes.
 
-The next routing milestone is to integration-test the C detour in the `/foss` container, verify DRC, and confirm from the extracted shared-net summary that the routed node appears on exactly the two intended A instances. After that, add a general dogleg/channel planner for opposite-facing ports and then multi-terminal and symmetry-constrained nets.
+The next integration milestone is to verify that the orthogonal-access route is DRC-clean and that extraction reports its routed node on exactly the two intended A instances. After that, add general channel assignment, then multi-terminal and symmetry-constrained routing.
