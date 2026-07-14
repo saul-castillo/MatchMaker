@@ -17,30 +17,41 @@
 - Magic extraction showed the dogleg route net on exactly two top-level instances, both intended A devices, with no B-device connection.
 - The one-command demo completed with pre-LVS checks passing.
 
+## Added after the latest `/foss` run
+
+The branch now also includes:
+
+- typed `TerminalRef`, `AccessPoint`, `PlacedInstance`, `RoutingObstacle`, and `PhysicalDesignSnapshot` models;
+- a MOS-centroid snapshot adapter that promotes ports and captures stable instance, access-point, and obstacle records;
+- router support for consuming the explicit snapshot instead of reading obstacle state only from `Component.info`;
+- exact extracted shared-net assertions based on the expected endpoint subcircuit participant multiset;
+- a standard `reports/connectivity/` artifact path;
+- automatic connectivity gating in `verify_generated_cell(...)`;
+- automatic connectivity gating in `route_two_centroid_gates.py`, so the command now exits nonzero if the extracted net has missing or extra participants;
+- pure unit tests for physical snapshots and connectivity assertions.
+
+The latest GitHub Actions pure-test and compilation workflow passes. These new snapshot and automatic connectivity-gate changes still require one fresh `/foss` rerun before they should be treated as integration-validated.
+
 ## Current implemented foundation
 
-The branch includes:
-
-- automatic `PDK` and `PDK_ROOT` subprocess configuration;
-- standalone Magic layout extraction;
-- one-call generated-cell DRC and extraction;
-- automatic GF180 Netgen setup-file resolution;
-- one-command LVS and extracted-netlist inspection CLIs;
-- shared-net summaries for extracted top-level instances;
-- structured missing-executable and timeout failures;
-- expanded pure unit tests and a GitHub Actions workflow;
-- obstacle metadata recorded from placed tile bounding boxes;
-- automatic rejection of blocked straight routes;
-- an explicit same-layer spatial dogleg route;
-- outward access selection using `gate_W` on the left endpoint and `gate_E` on the right endpoint;
-- vertical legs placed beyond the full array x-envelope;
-- a horizontal channel placed above or below the full array y-envelope;
-- fail-safe rejection when an endpoint cannot reach the outside channel.
+- deterministic MOS centroid placement;
+- stable physical access naming;
+- typed physical-design snapshot;
+- point-to-point route intent;
+- obstacle detection;
+- explicit same-layer spatial dogleg routing;
+- GF180 Magic DRC;
+- Magic SPICE extraction;
+- manual and automatic extracted-connectivity checks;
+- Netgen LVS runner infrastructure;
+- structured reports and failure results.
 
 ## Not yet demonstrated
 
+- a fresh `/foss` run of the snapshot-backed demo with automatic connectivity gating;
 - a passing Netgen LVS comparison against an independent schematic netlist;
-- automatic connectivity assertions integrated into the demo exit status;
+- typed net and route-group constraints;
+- a common route-plan and routing-metrics model;
 - general multi-terminal routing;
 - symmetry-constrained and matched-length routing;
 - channel assignment for several simultaneous nets;
