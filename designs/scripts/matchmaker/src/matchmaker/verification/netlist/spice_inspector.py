@@ -47,23 +47,35 @@ class SpiceSubcircuit:
             for statement in self.subcircuit_instance_statements
         )
 
+    def shared_instance_net_details(
+        self,
+        minimum_instance_count: int = 2,
+    ) -> dict[str, tuple[SpiceSubcircuitInstance, ...]]:
+        """Map shared nets to the unique top-level X instances that use them."""
+        if minimum_instance_count < 2:
+            raise ValueError("minimum_instance_count must be at least 2")
+
+        usage: dict[str, list[SpiceSubcircuitInstance]] = defaultdict(list)
+        for instance in self.subcircuit_instances:
+            for node in dict.fromkeys(instance.nodes):
+                usage[node].append(instance)
+
+        return {
+            node: tuple(instances)
+            for node, instances in usage.items()
+            if len(instances) >= minimum_instance_count
+        }
+
     def shared_instance_nets(
         self,
         minimum_instance_count: int = 2,
     ) -> dict[str, tuple[str, ...]]:
         """Map each net used by multiple top-level X instances to instance names."""
-        if minimum_instance_count < 2:
-            raise ValueError("minimum_instance_count must be at least 2")
-
-        usage: dict[str, list[str]] = defaultdict(list)
-        for instance in self.subcircuit_instances:
-            for node in dict.fromkeys(instance.nodes):
-                usage[node].append(instance.name)
-
         return {
-            node: tuple(instance_names)
-            for node, instance_names in usage.items()
-            if len(instance_names) >= minimum_instance_count
+            node: tuple(instance.name for instance in instances)
+            for node, instances in self.shared_instance_net_details(
+                minimum_instance_count
+            ).items()
         }
 
 
