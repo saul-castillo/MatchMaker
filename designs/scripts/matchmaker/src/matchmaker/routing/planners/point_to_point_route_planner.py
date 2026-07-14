@@ -1,10 +1,9 @@
 from dataclasses import dataclass
 from math import isclose
-from typing import Protocol
+from typing import Literal, Protocol
 
 from matchmaker.routing.intents.point_to_point_route_intent import (
     PointToPointRouteIntent,
-    RouteStrategy,
 )
 
 
@@ -13,7 +12,7 @@ class PortLike(Protocol):
     orientation: float
 
 
-ResolvedRouteStrategy = RouteStrategy
+ResolvedRouteStrategy = Literal["straight", "l", "c", "smart", "dogleg"]
 
 
 @dataclass(frozen=True)
