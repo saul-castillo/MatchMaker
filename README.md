@@ -8,13 +8,13 @@ MatchMaker is a deterministic, constraint-driven analog layout automation projec
 structured layout intent
 → deterministic placement plan
 → GF180 primitive placement
-→ physical terminal access and obstacle metadata
+→ typed physical-design snapshot
 → point-to-point route planning
 → route geometry
 → GDS
 → Magic DRC
 → Magic SPICE extraction
-→ connectivity inspection
+→ automatic connectivity assertion
 → Netgen LVS infrastructure
 ```
 
@@ -69,9 +69,9 @@ source scripts/matchmaker/env/setup.sh
 python scripts/matchmaker/examples/routing/route_two_centroid_gates.py
 ```
 
-The command generates the routed GDS, runs DRC, extracts SPICE, and writes reports.
+The command generates the routed GDS, runs DRC, extracts SPICE, and fails unless the extracted route net has exactly the expected two endpoint participants.
 
-Inspect extracted connectivity with:
+Inspect extracted connectivity manually with:
 
 ```bash
 python scripts/matchmaker/examples/verification/inspect_extracted_netlist.py nfet_centroid_gate_route_demo
@@ -95,6 +95,7 @@ designs/
         reports/
           drc/
           extraction/
+          connectivity/
           lvs/
 
   scripts/
@@ -114,6 +115,7 @@ designs/
         matchmaker/
           specs/
           placement/
+          physical/
           primitives/
           routing/
           verification/
@@ -141,11 +143,13 @@ designs/libs/core_analog/
 
 `placement/mos/` contains MOS-specific intent compilation, dummy handling, device binding, and placement construction.
 
+`physical/` contains typed placed-instance, logical-terminal, physical-access, obstacle, and physical-design snapshot models. Its MOS centroid adapter is transitional until placement builders return stable instance bindings directly.
+
 `primitives/` contains PDK/gLayout primitive factories.
 
-`routing/intents/`, `routing/ports/`, `routing/planners/`, and `routing/routers/` currently implement the first routing slice. The promoted-port and `Component.info` metadata interfaces are transitional and will migrate toward an explicit physical-design snapshot.
+`routing/intents/`, `routing/ports/`, `routing/planners/`, and `routing/routers/` implement the first routing slice. New routing work should consume `PhysicalDesignSnapshot`; promoted ports and `Component.info` remain compatibility adapters only.
 
-`verification/` contains Magic DRC, Magic extraction, Netgen LVS, process execution, and SPICE connectivity inspection.
+`verification/` contains Magic DRC, Magic extraction, Netgen LVS, process execution, SPICE inspection, and extracted-connectivity assertions.
 
 `outputs/` owns generated artifact paths.
 
@@ -164,18 +168,25 @@ designs/libs/core_analog/
 
 ## Near-term roadmap
 
+Completed architectural foundation:
+
 ```text
-1. automatic extracted-connectivity assertions
-2. typed PlacementResult / PhysicalDesignSnapshot
-3. logical TerminalRef and AccessPoint models
-4. typed net and route-group constraints
-5. common RoutePlan and routing metrics
-6. routing-strategy dispatcher
-7. multi-terminal topology planning
-8. matched and differential routing
-9. congestion-aware multi-net routing
-10. independent schematic LVS and repair feedback
-11. capacitor-array and CDAC routing templates
+✓ automatic extracted-connectivity assertions
+✓ typed PhysicalDesignSnapshot
+✓ logical TerminalRef and physical AccessPoint models
+```
+
+Next development order:
+
+```text
+1. typed net and route-group constraints
+2. common RoutePlan and routing metrics
+3. routing-strategy dispatcher
+4. multi-terminal topology planning
+5. matched and differential routing
+6. congestion-aware multi-net routing
+7. independent schematic LVS and repair feedback
+8. capacitor-array and CDAC routing templates
 ```
 
 ## Team
