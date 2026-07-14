@@ -64,7 +64,7 @@ def build_routed_demo():
         source=RouteEndpoint(instance_name="A0", port_name="gate_E"),
         target=RouteEndpoint(instance_name="A1", port_name="gate_E"),
         avoid_obstacles=True,
-        obstacle_clearance=0.2,
+        obstacle_clearance=1.0,
     )
     executed = route_point_to_point_intent(
         component=top,
@@ -96,6 +96,10 @@ def main() -> int:
 
     print(f"route strategy: {executed.plan.strategy}")
     print(f"straight-route blockers: {executed.blockers or '(none)'}")
+    print(f"actual source access: {executed.plan.source_top_port_name}")
+    print(f"actual target access: {executed.plan.target_top_port_name}")
+    print(f"detour direction: {executed.detour_direction or '(none)'}")
+    print(f"detour extension: {executed.detour_extension}")
     print(f"GDS: {paths.final_gds}")
 
     if args.skip_verification:
