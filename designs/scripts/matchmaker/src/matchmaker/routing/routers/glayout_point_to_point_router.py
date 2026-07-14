@@ -7,12 +7,16 @@ from matchmaker.routing.intents.point_to_point_route_intent import (
 from matchmaker.routing.planners.obstacle_aware_route_planner import (
     find_straight_route_blockers,
 )
-from matchmaker.routing.planners.orthogonal_access_detour import (
-    choose_orthogonal_access_detour,
-)
 from matchmaker.routing.planners.point_to_point_route_planner import (
     PointToPointRoutePlan,
     plan_point_to_point_route,
+)
+from matchmaker.routing.planners.spatial_dogleg_planner import (
+    SpatialDoglegPlan,
+    choose_spatial_dogleg,
+)
+from matchmaker.routing.routers.spatial_dogleg_route import (
+    build_spatial_dogleg_route,
 )
 
 try:
@@ -33,10 +37,17 @@ class ExecutedRoute:
     route_reference: object
     blockers: tuple[str, ...] = ()
     detour_direction: str | None = None
-    detour_extension: float | None = None
+    detour_channel_coordinate: float | None = None
 
 
-def _build_route_component(pdk, plan, source_port, target_port, route_kwargs):
+def _build_route_component(
+    pdk,
+    plan,
+    source_port,
+    target_port,
+    route_kwargs,
+    dogleg_plan: SpatialDoglegPlan | None = None,
+):
     kwargs = dict(route_kwargs)
 
     if plan.strategy == "straight":
@@ -47,6 +58,21 @@ def _build_route_component(pdk, plan, source_port, target_port, route_kwargs):
         return c_route(pdk, source_port, target_port, **kwargs)
     if plan.strategy == "smart":
         return smart_route(pdk, source_port, target_port, **kwargs)
+    if plan.strategy == "dogleg":
+        if dogleg_plan is None:
+            raise RuntimeError("Spatial dogleg plan is missing")
+        width = kwargs.pop("width", None)
+        if kwargs:
+            unsupported = ", ".join(sorted(kwargs))
+            raise ValueError(
+                f"Unsupported spatial dogleg route kwargs: {unsupported}"
+            )
+        return build_spatial_dogleg_route(
+            source_port=source_port,
+            target_port=target_port,
+            plan=dogleg_plan,
+            width=width,
+        )
 
     raise ValueError(f"Unsupported route strategy: {plan.strategy!r}")
 
@@ -78,9 +104,7 @@ def route_point_to_point_intent(
 
     obstacles = component.info.get("matchmaker_routing_obstacles", ())
     blockers: tuple[str, ...] = ()
-    detour_direction = None
-    detour_extension = None
-    route_kwargs = dict(intent.route_kwargs)
+    dogleg_plan = None
 
     if intent.avoid_obstacles and plan.strategy == "straight":
         blockers = find_straight_route_blockers(
@@ -95,7 +119,7 @@ def route_point_to_point_intent(
         )
 
         if blockers:
-            detour = choose_orthogonal_access_detour(
+            dogleg_plan = choose_spatial_dogleg(
                 ports=component.ports,
                 source_instance_name=intent.source.instance_name,
                 source_port_name=intent.source.port_name,
@@ -109,40 +133,35 @@ def route_point_to_point_intent(
             )
             source_port = _port(
                 component,
-                detour.source_top_port_name,
-                "detour source",
+                dogleg_plan.source_top_port_name,
+                "dogleg source",
             )
             target_port = _port(
                 component,
-                detour.target_top_port_name,
-                "detour target",
+                dogleg_plan.target_top_port_name,
+                "dogleg target",
             )
             plan = replace(
                 plan,
-                source_top_port_name=detour.source_top_port_name,
-                target_top_port_name=detour.target_top_port_name,
-                strategy="c",
+                source_top_port_name=dogleg_plan.source_top_port_name,
+                target_top_port_name=dogleg_plan.target_top_port_name,
+                strategy="dogleg",
             )
-            detour_direction = detour.direction
-            detour_extension = float(detour.extension)
-            requested_extension = route_kwargs.get("extension")
-            if requested_extension is None:
-                route_kwargs["extension"] = detour_extension
-            else:
-                route_kwargs["extension"] = max(
-                    float(requested_extension),
-                    detour_extension,
-                )
 
     route_component = _build_route_component(
         pdk=pdk,
         plan=plan,
         source_port=source_port,
         target_port=target_port,
-        route_kwargs=route_kwargs,
+        route_kwargs=intent.route_kwargs,
+        dogleg_plan=dogleg_plan,
     )
     route_reference = component << route_component
 
+    detour_direction = dogleg_plan.direction if dogleg_plan is not None else None
+    detour_channel_coordinate = (
+        float(dogleg_plan.channel_coordinate) if dogleg_plan is not None else None
+    )
     route_log = list(component.info.get("matchmaker_routes", ()))
     route_log.append(
         {
@@ -154,7 +173,7 @@ def route_point_to_point_intent(
             "strategy": plan.strategy,
             "blockers": blockers,
             "detour_direction": detour_direction,
-            "detour_extension": detour_extension,
+            "detour_channel_coordinate": detour_channel_coordinate,
         }
     )
     component.info["matchmaker_routes"] = tuple(route_log)
@@ -164,7 +183,7 @@ def route_point_to_point_intent(
         route_reference=route_reference,
         blockers=blockers,
         detour_direction=detour_direction,
-        detour_extension=detour_extension,
+        detour_channel_coordinate=detour_channel_coordinate,
     )
 
 
