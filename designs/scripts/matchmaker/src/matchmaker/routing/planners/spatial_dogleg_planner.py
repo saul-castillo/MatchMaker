@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from math import isclose
-from typing import Iterable, Literal, Mapping, Protocol
+from typing import Iterable, Literal, Protocol
+
+from matchmaker.physical.models import RoutingObstacle
 
 
 class PortLike(Protocol):
@@ -36,25 +38,6 @@ def _orientation_matches(port: PortLike, direction: str) -> bool:
     return int(round(float(port.orientation))) % 360 == expected
 
 
-def _coerce_obstacles(
-    obstacles: Iterable[Mapping[str, object]],
-) -> tuple[tuple[str, tuple[tuple[float, float], tuple[float, float]]], ...]:
-    coerced = []
-    for obstacle in obstacles:
-        name = str(obstacle["instance_name"])
-        (xmin, ymin), (xmax, ymax) = obstacle["bbox"]  # type: ignore[misc]
-        coerced.append(
-            (
-                name,
-                (
-                    (float(xmin), float(ymin)),
-                    (float(xmax), float(ymax)),
-                ),
-            )
-        )
-    return tuple(coerced)
-
-
 def _strict_overlap(a0: float, a1: float, b0: float, b1: float) -> bool:
     first_min, first_max = sorted((a0, a1))
     second_min, second_max = sorted((b0, b1))
@@ -65,13 +48,17 @@ def _horizontal_access_is_clear(
     y: float,
     x0: float,
     x1: float,
-    obstacles,
+    obstacles: tuple[RoutingObstacle, ...],
     excluded_names: set[str],
 ) -> bool:
-    for name, ((xmin, ymin), (xmax, ymax)) in obstacles:
-        if name in excluded_names:
+    for obstacle in obstacles:
+        if obstacle.display_name in excluded_names:
             continue
-        if ymin - 1e-9 <= y <= ymax + 1e-9 and _strict_overlap(x0, x1, xmin, xmax):
+        bbox = obstacle.bbox
+        if (
+            bbox.ymin - 1e-9 <= y <= bbox.ymax + 1e-9
+            and _strict_overlap(x0, x1, bbox.xmin, bbox.xmax)
+        ):
             return False
     return True
 
@@ -80,13 +67,17 @@ def _vertical_access_is_clear(
     x: float,
     y0: float,
     y1: float,
-    obstacles,
+    obstacles: tuple[RoutingObstacle, ...],
     excluded_names: set[str],
 ) -> bool:
-    for name, ((xmin, ymin), (xmax, ymax)) in obstacles:
-        if name in excluded_names:
+    for obstacle in obstacles:
+        if obstacle.display_name in excluded_names:
             continue
-        if xmin - 1e-9 <= x <= xmax + 1e-9 and _strict_overlap(y0, y1, ymin, ymax):
+        bbox = obstacle.bbox
+        if (
+            bbox.xmin - 1e-9 <= x <= bbox.xmax + 1e-9
+            and _strict_overlap(y0, y1, bbox.ymin, bbox.ymax)
+        ):
             return False
     return True
 
@@ -106,17 +97,12 @@ def choose_spatial_dogleg(
     target_port_name: str,
     source_port: PortLike,
     target_port: PortLike,
-    obstacles: Iterable[Mapping[str, object]],
+    obstacles: Iterable[RoutingObstacle],
     separator: str = "__",
     clearance: float = 1.0,
     minimum_outward_extension: float = 0.5,
 ) -> SpatialDoglegPlan:
-    """Plan a U-shaped route outside the full placed-device envelope.
-
-    Horizontal blocked connections use the outward W/E ports of the same
-    terminal and place the channel above or below the array. Vertical blocked
-    connections use outward S/N ports and place the channel left or right.
-    """
+    """Plan a U-shaped route outside the full placed-device envelope."""
     if clearance < 0:
         raise ValueError("clearance must be non-negative")
     if minimum_outward_extension <= 0:
@@ -131,14 +117,14 @@ def choose_spatial_dogleg(
     target_terminal, _ = target_split
     source_x, source_y = map(float, source_port.center)
     target_x, target_y = map(float, target_port.center)
-    coerced_obstacles = _coerce_obstacles(obstacles)
-    if not coerced_obstacles:
+    obstacle_tuple = tuple(obstacles)
+    if not obstacle_tuple:
         raise RuntimeError("Spatial dogleg routing requires placed-obstacle metadata")
 
-    global_xmin = min(bbox[0][0] for _, bbox in coerced_obstacles)
-    global_ymin = min(bbox[0][1] for _, bbox in coerced_obstacles)
-    global_xmax = max(bbox[1][0] for _, bbox in coerced_obstacles)
-    global_ymax = max(bbox[1][1] for _, bbox in coerced_obstacles)
+    global_xmin = min(obstacle.bbox.xmin for obstacle in obstacle_tuple)
+    global_ymin = min(obstacle.bbox.ymin for obstacle in obstacle_tuple)
+    global_xmax = max(obstacle.bbox.xmax for obstacle in obstacle_tuple)
+    global_ymax = max(obstacle.bbox.ymax for obstacle in obstacle_tuple)
     excluded = {source_instance_name, target_instance_name}
 
     if isclose(source_y, target_y, abs_tol=1e-6):
@@ -174,7 +160,7 @@ def choose_spatial_dogleg(
             actual_source_y,
             actual_source_x,
             source_bend_x,
-            coerced_obstacles,
+            obstacle_tuple,
             excluded,
         ):
             raise RuntimeError("Source terminal cannot reach the outside routing channel")
@@ -182,7 +168,7 @@ def choose_spatial_dogleg(
             actual_target_y,
             actual_target_x,
             target_bend_x,
-            coerced_obstacles,
+            obstacle_tuple,
             excluded,
         ):
             raise RuntimeError("Target terminal cannot reach the outside routing channel")
@@ -239,7 +225,7 @@ def choose_spatial_dogleg(
             actual_source_x,
             actual_source_y,
             source_bend_y,
-            coerced_obstacles,
+            obstacle_tuple,
             excluded,
         ):
             raise RuntimeError("Source terminal cannot reach the outside routing channel")
@@ -247,7 +233,7 @@ def choose_spatial_dogleg(
             actual_target_x,
             actual_target_y,
             target_bend_y,
-            coerced_obstacles,
+            obstacle_tuple,
             excluded,
         ):
             raise RuntimeError("Target terminal cannot reach the outside routing channel")
