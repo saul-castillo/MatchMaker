@@ -35,9 +35,48 @@ The current branch adds:
 
 GitHub Actions unit tests and Python compilation pass for the implementation branch.
 
-## Required `/foss` validation for PR #3
+## `/foss` validation status for PR #3
 
-First rerun the existing dogleg regression:
+### Confirmed: diagonal Manhattan regression
+
+Command:
+
+```bash
+python scripts/matchmaker/examples/routing/route_two_centroid_gates.py \
+  --cell-name nfet_centroid_diagonal_gate_route_demo \
+  --source-instance A0 \
+  --target-instance A2
+```
+
+Observed result:
+
+```text
+logical terminals: A0.gate, A2.gate
+route strategy: manhattan
+direct-route blockers: (none)
+actual source access: A0__gate_E
+actual target access: A2__gate_W
+route points: (-28.57, 13.26) -> (-20.08, 13.26) -> (-20.08, -13.26) -> (-10.29, -13.26)
+route length: 44.8
+route bends: 2
+route width: 0.5
+route estimated cost: 45.3
+feasible route candidates: 4
+rejected route candidates: 110
+physical instances: 8
+physical access points: 128
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: True
+pre-LVS checks passed: True
+```
+
+Extraction identified exactly the intended A0 and A2 device instances on the routed net. The generated GDS displayed the expected non-inline same-layer Z geometry.
+
+### Still required: existing dogleg regression on this branch
+
+Run:
 
 ```bash
 python scripts/matchmaker/examples/routing/route_two_centroid_gates.py
@@ -57,30 +96,7 @@ connectivity passed: True
 pre-LVS checks passed: True
 ```
 
-Then run the diagonal Manhattan regression:
-
-```bash
-python scripts/matchmaker/examples/routing/route_two_centroid_gates.py \
-  --cell-name nfet_centroid_diagonal_gate_route_demo \
-  --source-instance A0 \
-  --target-instance A2
-```
-
-Expected planning result:
-
-```text
-logical terminals: A0.gate, A2.gate
-route strategy: manhattan
-actual source access: A0__gate_E
-actual target access: A2__gate_W
-route bends: 2
-DRC passed: True
-extraction passed: True
-connectivity passed: True
-pre-LVS checks passed: True
-```
-
-The exact selected channel coordinate may depend on transformed GF180 access geometry. The required invariants are a clear non-inline same-layer Manhattan route and extracted connectivity on exactly A0 and A2.
+PR #3 remains draft until this regression confirms that modular dispatch did not break the previously validated dogleg path.
 
 ## Current implementation boundary
 
@@ -98,7 +114,7 @@ Implemented and physically validated on `main`:
 - exact extracted-connectivity assertions;
 - Netgen LVS runner infrastructure.
 
-Implemented but awaiting `/foss` validation on PR #3:
+Implemented on PR #3, with diagonal Manhattan integration validated:
 
 - modular strategy dispatch;
 - rejection reports;
