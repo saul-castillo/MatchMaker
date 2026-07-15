@@ -1,6 +1,6 @@
 # MatchMaker
 
-MatchMaker is a deterministic, constraint-driven analog layout automation project for the SSCS Chipathon Track D analog/LLM flow. The project targets GF180 through gLayout and is being developed toward reusable matched MOS structures, switch networks, capacitor arrays, CDACs, and larger verified analog cells.
+MatchMaker is a deterministic, constraint-driven analog layout automation project for the SSCS Chipathon Track D analog/LLM flow. It targets GF180 through gLayout and is being developed toward reusable matched MOS structures, switch networks, capacitor arrays, CDACs, and larger verified analog cells.
 
 ## Current flow
 
@@ -18,9 +18,9 @@ structured layout intent
 → Netgen LVS infrastructure
 ```
 
-The current integration milestone demonstrates a MOS centroid array with an obstacle-aware gate connection. The engine rejects a direct route that would cross unrelated devices, selects outward gate access, builds an explicit spatial dogleg outside the array, passes GF180 Magic DRC, and extracts a routed node connected to exactly the two intended devices.
+The current integration milestone demonstrates a MOS centroid array with an obstacle-aware gate connection. The engine rejects a direct route through unrelated devices, selects outward gate access, builds a same-layer spatial dogleg outside the array, passes GF180 Magic DRC, and extracts a routed node connected to exactly the two intended devices.
 
-This is a verified point-to-point routing slice. General multi-terminal routing, matched routing, differential routing, multi-net congestion handling, and a passing independent schematic LVS comparison remain future work.
+This is a verified point-to-point routing slice. Logical-net intent, general multi-terminal routing, matched routing, differential routing, congestion handling, and a passing independent schematic LVS comparison remain future work.
 
 ## Start here
 
@@ -28,23 +28,15 @@ Before changing the engine, read:
 
 ```text
 designs/scripts/matchmaker/docs/ENGINEERING_MAP.md
-```
-
-That document defines the pipeline, package ownership, dependency rules, known architectural debt, and development order. Durable design decisions are recorded under:
-
-```text
-designs/scripts/matchmaker/docs/adr/
-```
-
-The accepted routing architecture is documented in:
-
-```text
 designs/scripts/matchmaker/docs/adr/0001-constraint-driven-hybrid-routing.md
+designs/scripts/matchmaker/docs/VALIDATION_STATUS.md
 ```
+
+The engineering map defines the pipeline, package ownership, dependency rules, architectural debt, and next development step. ADRs record durable design decisions. Validation status records only results demonstrated in the Chipathon `/foss` environment.
 
 ## Working principle
 
-MatchMaker separates logical connectivity from physical access. A logical terminal such as `A0.gate` may have several physical access candidates such as east or west gate ports. Routing should select access points, topology, channels, layers, widths, and detailed segments from typed constraints and a physical-design snapshot rather than from fixed procedural geometry.
+MatchMaker separates logical connectivity from physical access. A logical terminal such as `A0.gate` may have several physical access candidates such as east or west gate ports. Routing should select access points, topology, channels, layers, widths, and detailed segments from typed constraints and a `PhysicalDesignSnapshot` rather than from procedural geometry or scattered component metadata.
 
 The routing architecture is hybrid:
 
@@ -69,7 +61,7 @@ source scripts/matchmaker/env/setup.sh
 python scripts/matchmaker/examples/routing/route_two_centroid_gates.py
 ```
 
-The command generates the routed GDS, runs DRC, extracts SPICE, and fails unless the extracted route net has exactly the expected two endpoint participants.
+The command generates the routed GDS, runs DRC, extracts SPICE, and exits nonzero unless the extracted route net has exactly the expected two endpoint participants.
 
 Inspect extracted connectivity manually with:
 
@@ -109,7 +101,6 @@ designs/
         ENGINEERING_MAP.md
         VALIDATION_STATUS.md
         placement_engine.md
-        routing_verification_foundation.md
         adr/
       src/
         matchmaker/
@@ -123,17 +114,7 @@ designs/
       tests/
 ```
 
-The Python package lives under:
-
-```text
-designs/scripts/matchmaker/src/matchmaker/
-```
-
-Generated circuit artifacts live under:
-
-```text
-designs/libs/core_analog/
-```
+The Python package lives under `designs/scripts/matchmaker/src/matchmaker/`. Generated circuit artifacts live under `designs/libs/core_analog/`.
 
 ## Package ownership
 
@@ -147,46 +128,47 @@ designs/libs/core_analog/
 
 `primitives/` contains PDK/gLayout primitive factories.
 
-`routing/intents/`, `routing/ports/`, `routing/planners/`, and `routing/routers/` implement the first routing slice. New routing work should consume `PhysicalDesignSnapshot`; promoted ports and `Component.info` remain compatibility adapters only.
+`routing/intents/`, `routing/planners/`, and `routing/routers/` implement the first routing slice. Route execution requires an explicit `PhysicalDesignSnapshot`.
 
 `verification/` contains Magic DRC, Magic extraction, Netgen LVS, process execution, SPICE inspection, and extracted-connectivity assertions.
 
-`outputs/` owns generated artifact paths.
-
-`examples/` should contain package wiring only, not reusable engine logic.
+`outputs/` owns generated artifact paths. `examples/` contains package wiring only, not reusable engine logic.
 
 ## Architectural rules
 
 - Keep high-level intent and pure planners independent of gLayout, Magic, and Netgen.
 - Do not add routing policy to placement builders or examples.
 - Separate logical terminals from physical access points.
+- Route execution requires explicit physical-design state.
 - Treat electrical, geometric, matching, symmetry, and separation requirements as typed constraints.
 - Filter candidates by hard constraints before ranking soft costs.
 - DRC success is not connectivity success; extraction or LVS must verify electrical intent.
 - Record major architectural decisions in `docs/adr/`.
-- Update `docs/VALIDATION_STATUS.md` only with results demonstrated in the `/foss` environment.
+- Update `docs/VALIDATION_STATUS.md` only with demonstrated `/foss` results.
 
 ## Near-term roadmap
 
-Completed architectural foundation:
+Completed foundation:
 
 ```text
 ✓ automatic extracted-connectivity assertions
 ✓ typed PhysicalDesignSnapshot
 ✓ logical TerminalRef and physical AccessPoint models
+✓ snapshot-backed obstacle-aware point-to-point route
 ```
 
 Next development order:
 
 ```text
-1. typed net and route-group constraints
-2. common RoutePlan and routing metrics
-3. routing-strategy dispatcher
-4. multi-terminal topology planning
-5. matched and differential routing
-6. congestion-aware multi-net routing
-7. independent schematic LVS and repair feedback
-8. capacitor-array and CDAC routing templates
+1. logical NetIntent and typed net/route-group constraints
+2. automatic access selection
+3. common RoutePlan and routing metrics
+4. routing-strategy dispatcher
+5. multi-terminal topology planning
+6. matched and differential routing
+7. congestion-aware multi-net routing
+8. independent schematic LVS and repair feedback
+9. capacitor-array and CDAC routing templates
 ```
 
 ## Team
