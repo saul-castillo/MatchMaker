@@ -7,7 +7,7 @@ RouteStrategy = Literal["auto", "straight", "l", "c", "smart"]
 
 @dataclass(frozen=True)
 class RouteEndpoint:
-    """Stable reference to one promoted placement port."""
+    """Reference to one physical access point on a placed instance."""
 
     instance_name: str
     port_name: str
@@ -24,11 +24,12 @@ class RouteEndpoint:
 
 @dataclass(frozen=True)
 class PointToPointRouteIntent:
-    """Net intent for one two-terminal physical connection.
+    """Transitional intent for one two-terminal physical connection.
 
-    When obstacle avoidance is enabled, cardinal MOS terminal ports may be
-    exchanged for equivalent cardinal access points on the same terminal. For
-    example, a blocked ``gate_E`` request may execute through ``gate_N``.
+    The obstacle-aware router may replace the requested access points with
+    equivalent outward access points before executing a spatial dogleg. Future
+    net intent will name logical terminals directly and perform access selection
+    as a separate planning stage.
     """
 
     net_name: str
