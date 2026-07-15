@@ -1,8 +1,10 @@
 # Validation status
 
-## Confirmed in the Chipathon `/foss` container
+This file records physical evidence demonstrated in the Chipathon `/foss` environment. Architecture and development direction belong in `ENGINEERING_MAP.md`; decisions belong in ADRs.
 
-The merged `main` flow has demonstrated:
+## Validated routing foundation
+
+The merged foundation demonstrated:
 
 - MatchMaker environment setup loads successfully.
 - Routing and verification unit tests pass.
@@ -11,35 +13,32 @@ The merged `main` flow has demonstrated:
 - The blocked direct path identifies `B0` and `B1`.
 - The planner selects outward `A0__gate_W` and `A1__gate_E` access.
 - The external same-layer dogleg runs outside the device row.
-- Promoted routing access was reduced from 21,520 hierarchy ports to 128 canonical MOS accesses across eight instances.
+- Promoted access was reduced from 21,520 hierarchy ports to 128 canonical MOS accesses across eight instances.
 - GF180 Magic DRC reports zero violations.
 - Magic extracts the routed layout to SPICE.
 - Extracted connectivity contains exactly the two intended A instances and no B instances.
 - The one-command flow reports `connectivity passed: True` and `pre-LVS checks passed: True`.
 
-## Implemented on `feature/manhattan-routing-dispatcher`
+Failure history: the original direct route and the first layer-only C route were DRC-clean but electrically connected the intervening B devices. This is the evidence behind the rule that DRC cannot substitute for extraction or LVS.
 
-The current branch adds:
+## PR #3 validation: modular strategy dispatch
+
+Implementation includes:
 
 - common `RouteCandidate`, `CandidateRejection`, and `StrategyDispatchResult` models;
-- modular straight, Manhattan, and external-dogleg strategy planners;
-- deterministic strategy dispatch with common hard-limit filtering;
-- candidate deduplication, ranking, provenance, and rejection evidence;
+- independent straight, Manhattan, and external-dogleg strategy modules;
+- deterministic dispatch, hard-limit filtering, deduplication, ranking, provenance, and rejection evidence;
 - same-layer non-inline L routes for perpendicular accesses;
 - same-layer non-inline Z routes for parallel accesses;
 - midpoint, obstacle-edge, and outer channel candidates;
 - outward endpoint-orientation checking;
 - full-polyline obstacle checking;
 - `plan_two_terminal_net_with_report(...)`;
-- a parameterized centroid routing demo for selecting arbitrary instance pairs.
+- a parameterized centroid routing example.
 
-GitHub Actions unit tests and Python compilation pass for the implementation branch.
+GitHub Actions unit tests and Python compilation pass. The obsolete fixed-port intent, fixed-port planner/router, dogleg-specific executor, compatibility selector, and superseded tests were removed before merge.
 
-## `/foss` validation status for PR #3
-
-Both required physical regressions passed on the branch.
-
-### Confirmed: existing blocked dogleg regression
+### Confirmed: blocked A0-to-A1 dogleg regression
 
 Command:
 
@@ -61,9 +60,9 @@ connectivity passed: True
 pre-LVS checks passed: True
 ```
 
-The modular dispatcher preserved the previously validated obstacle-aware dogleg and exact A0/A1 connectivity.
+The modular dispatcher preserved the validated obstacle-aware dogleg and exact A0/A1 connectivity.
 
-### Confirmed: diagonal Manhattan regression
+### Confirmed: diagonal A0-to-A2 Manhattan regression
 
 Command:
 
@@ -98,38 +97,31 @@ connectivity passed: True
 pre-LVS checks passed: True
 ```
 
-Extraction identified exactly the intended A0 and A2 device instances on the routed net. The generated GDS displayed the expected non-inline same-layer Z geometry.
+Extraction identified exactly the intended A0 and A2 instances. The generated GDS displayed the expected non-inline same-layer Z geometry.
 
-## Current implementation boundary
-
-Implemented and physically validated on `main`:
+## Current validated implementation boundary
 
 - deterministic MOS centroid placement;
 - typed read-only `PhysicalDesignSnapshot`;
 - filtered canonical MOS terminal access;
 - logical two-terminal net intent;
-- typed per-net and route-group constraint models;
-- same-layer straight and external-dogleg planning;
+- typed per-net and route-group constraints;
+- modular same-layer straight, Manhattan L/Z, and external-dogleg planning;
+- structured candidate and rejection reports;
 - common route-plan and metrics IR;
 - mechanical same-layer execution;
 - GF180 Magic DRC and extraction;
 - exact extracted-connectivity assertions;
 - Netgen LVS runner infrastructure.
 
-Implemented and physically validated on PR #3:
+## Not yet implemented or demonstrated
 
-- modular strategy dispatch;
-- structured candidate and rejection reports;
-- same-layer non-inline L/Z Manhattan routing;
-- preservation of the existing blocked dogleg regression.
-
-Not yet implemented or demonstrated:
-
-- independent schematic Netgen LVS pass;
+- a passing independent schematic-to-layout Netgen LVS comparison;
 - committed routes as obstacles/resources;
 - PDK-resolved width classes and layer policies;
 - via planning and execution;
 - multi-terminal topology planning;
 - matched, differential, symmetry, shielding, and separation group planning;
 - congestion-aware graph search and rip-up/reroute;
-- stable logical instance identity through extraction.
+- stable logical instance identity through extraction;
+- capacitor/CDAC physical adapters and routing templates.
