@@ -31,7 +31,6 @@ class FakeComponent:
     def __init__(self, references):
         self.references = list(references)
         self.ports = {}
-        self.info = {}
 
     def add_ports(self, ports, prefix=""):
         for port in ports:
@@ -88,19 +87,15 @@ class PhysicalDesignSnapshotTests(unittest.TestCase):
             ("A0__gate_E", "A0__gate_W"),
         )
 
-    def test_legacy_metadata_is_only_an_adapter_of_snapshot_state(self):
+    def test_snapshot_mappings_are_read_only(self):
         snapshot = create_mos_centroid_physical_design_snapshot(
             self.component,
             self.plan,
         )
-        self.assertEqual(
-            self.component.info["matchmaker_routing_obstacles"],
-            snapshot.legacy_obstacles(),
-        )
-        self.assertEqual(
-            self.component.info["matchmaker_physical_snapshot_version"],
-            1,
-        )
+        with self.assertRaises(TypeError):
+            snapshot.instances["extra"] = snapshot.instance("A0")
+        with self.assertRaises(TypeError):
+            snapshot.access_points["extra"] = snapshot.access_point("A0__gate_E")
 
     def test_reference_count_mismatch_fails(self):
         incomplete = FakeComponent(self.component.references[:1])
