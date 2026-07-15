@@ -16,9 +16,9 @@ The merged routing foundation has demonstrated:
 - Extraction shows the dogleg net on exactly the two intended A instances, with no B-device connection.
 - The snapshot-backed one-command flow reports `connectivity passed: True` and `pre-LVS checks passed: True`.
 
-## Added on `feature/logical-net-routing-ir`
+## Confirmed on `feature/logical-net-routing-ir`
 
-The current development branch adds:
+The logical-net routing branch has now been rerun successfully in `/foss` and demonstrates:
 
 - logical `NetIntent` using `TerminalRef` rather than concrete primitive-port names;
 - typed `NetConstraintProfile` and `RouteGroupConstraintProfile` models;
@@ -28,33 +28,15 @@ The current development branch adds:
 - common `RoutePlan`, `RouteSegment`, `ViaPlan`, `RouteMetrics`, and `ConstraintCheck` models;
 - a mechanical same-layer route-plan executor;
 - migration of the centroid demo from fixed `gate_E` endpoints to logical `A0.gate` and `A1.gate` terminals;
-- pure tests covering clear straight selection, blocked outward dogleg selection, explicit width, layer rejection, and hard length rejection.
+- automatic recovery of the validated `A0__gate_W` and `A1__gate_E` outward dogleg;
+- route metrics of approximately 118.24 layout units, four bends, width 0.5, and estimated cost approximately 119.24;
+- reduction of promoted MOS routing access points from 21,520 unfiltered hierarchy ports to 128 canonical external terminal accesses across eight instances;
+- GF180 Magic DRC with zero violations;
+- successful Magic SPICE extraction;
+- exact extracted connectivity on the two intended A instances only;
+- `connectivity passed: True` and `pre-LVS checks passed: True`.
 
-GitHub Actions pure tests and Python compilation pass for the initial implementation. Documentation updates may trigger an additional workflow run.
-
-## Required `/foss` validation for this branch
-
-Run:
-
-```bash
-python -m unittest discover -s scripts/matchmaker/tests -v
-python scripts/matchmaker/examples/routing/route_two_centroid_gates.py
-```
-
-The migrated demo must show:
-
-```text
-logical terminals: A0.gate, A1.gate
-route strategy: dogleg
-actual source access: A0__gate_W
-actual target access: A1__gate_E
-DRC passed: True
-extraction passed: True
-connectivity passed: True
-pre-LVS checks passed: True
-```
-
-The generated geometry and extracted participant set should match the previously validated result.
+GitHub Actions pure tests and Python compilation pass at the filtered-access branch head.
 
 ## Current implementation boundary
 
@@ -62,6 +44,7 @@ Implemented:
 
 - deterministic MOS centroid placement;
 - typed, read-only `PhysicalDesignSnapshot`;
+- filtered canonical external MOS access points;
 - logical two-terminal net intent;
 - typed per-net and route-group constraint models;
 - automatic same-layer straight/dogleg access selection;
@@ -73,7 +56,6 @@ Implemented:
 
 Not yet demonstrated or implemented:
 
-- a fresh `/foss` run of the logical-intent demo;
 - a passing independent schematic Netgen LVS comparison;
 - via planning and execution;
 - PDK-resolved width classes and layer policies;
