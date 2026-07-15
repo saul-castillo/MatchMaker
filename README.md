@@ -1,44 +1,81 @@
 # MatchMaker
 
-MatchMaker is a spec-driven analog layout automation project for the SSCS Chipathon Track D analog/LLM flow. The project focuses on deterministic generation of matched analog structures in GF180 using gLayout.
+MatchMaker is a deterministic, constraint-driven analog layout automation project for the SSCS Chipathon Track D analog/LLM flow. It targets GF180 through gLayout and is being developed toward reusable matched MOS structures, switch networks, capacitor arrays, CDACs, and larger verified analog cells.
 
-The current milestone is a package-based placement engine for MOS centroid arrays. It translates structured layout intent into an internal tile plan, instantiates GF180 MOS primitives, and writes GDS output into the Chipathon template library structure.
-
-## Overview
-
-Analog layout depends heavily on matching, symmetry, orientation, proximity, and later routing balance. MatchMaker addresses the placement portion of that problem first by generating matched-device arrays programmatically rather than placing each unit device by hand.
-
-The current flow is:
+## Current flow
 
 ```text
-MOS centroid intent
-→ internal tile grid
-→ placement request
-→ GF180 MOS primitive placement
-→ GDS output
+structured layout intent
+→ deterministic placement plan
+→ GF180 primitive placement
+→ typed physical-design snapshot
+→ point-to-point route planning
+→ route geometry
+→ GDS
+→ Magic DRC
+→ Magic SPICE extraction
+→ automatic connectivity assertion
+→ Netgen LVS infrastructure
 ```
 
-This is placement-only. Routing, pin labeling, DRC, LVS, and feedback-driven iteration are planned as separate modules.
+The current integration milestone demonstrates a MOS centroid array with an obstacle-aware gate connection. The engine rejects a direct route through unrelated devices, selects outward gate access, builds a same-layer spatial dogleg outside the array, passes GF180 Magic DRC, and extracts a routed node connected to exactly the two intended devices.
 
-## Current Status
+This is a verified point-to-point routing slice. Logical-net intent, general multi-terminal routing, matched routing, differential routing, congestion handling, and a passing independent schematic LVS comparison remain future work.
 
-The current engine supports MOS centroid placement from high-level intent or explicit custom grids. It handles active, dummy, and empty tile roles; group-to-device binding; orientation policies; spacing policies; primitive-level dummy policies; and explicit GF180 MOS primitive options.
+## Start here
 
-The main working demo is:
+Before changing the engine, read:
+
+```text
+designs/scripts/matchmaker/docs/ENGINEERING_MAP.md
+designs/scripts/matchmaker/docs/adr/0001-constraint-driven-hybrid-routing.md
+designs/scripts/matchmaker/docs/VALIDATION_STATUS.md
+```
+
+The engineering map defines the pipeline, package ownership, dependency rules, architectural debt, and next development step. ADRs record durable design decisions. Validation status records only results demonstrated in the Chipathon `/foss` environment.
+
+## Working principle
+
+MatchMaker separates logical connectivity from physical access. A logical terminal such as `A0.gate` may have several physical access candidates such as east or west gate ports. Routing should select access points, topology, channels, layers, widths, and detailed segments from typed constraints and a `PhysicalDesignSnapshot` rather than from procedural geometry or scattered component metadata.
+
+The routing architecture is hybrid:
+
+```text
+straight route
+→ simple Manhattan family
+→ explicit spatial dogleg/channel
+→ coarse routing-graph search
+→ multi-terminal topology routing
+→ negotiated multi-net routing
+```
+
+Analog-specific templates and graph-search strategies will share a common route-plan and verification contract.
+
+## Run the current routing and verification demo
+
+Inside the Chipathon container:
 
 ```bash
 cd /foss/designs
 source scripts/matchmaker/env/setup.sh
-python scripts/matchmaker/examples/placement/build_nfet_centroid_from_intent.py
+python scripts/matchmaker/examples/routing/route_two_centroid_gates.py
 ```
 
-Generated layouts are written under:
+The command generates the routed GDS, runs DRC, extracts SPICE, and exits nonzero unless the extracted route net has exactly the expected two endpoint participants.
 
-```text
-designs/libs/core_analog/<cell_name>/gds/
+Inspect extracted connectivity manually with:
+
+```bash
+python scripts/matchmaker/examples/verification/inspect_extracted_netlist.py nfet_centroid_gate_route_demo
 ```
 
-## Repository Structure
+Run the pure Python tests with:
+
+```bash
+python -m unittest discover -s scripts/matchmaker/tests -v
+```
+
+## Repository structure
 
 ```text
 designs/
@@ -49,131 +86,103 @@ designs/
         netlist/
         reports/
           drc/
+          extraction/
+          connectivity/
           lvs/
 
   scripts/
     matchmaker/
       env/
-        setup.sh
-
       examples/
         placement/
-          build_nfet_centroid_from_intent.py
-
+        routing/
+        verification/
       docs/
+        ENGINEERING_MAP.md
+        VALIDATION_STATUS.md
         placement_engine.md
-
+        adr/
       src/
         matchmaker/
           specs/
           placement/
+          physical/
           primitives/
-          outputs/
           routing/
           verification/
+          outputs/
+      tests/
 ```
 
-The Python package lives under:
+The Python package lives under `designs/scripts/matchmaker/src/matchmaker/`. Generated circuit artifacts live under `designs/libs/core_analog/`.
+
+## Package ownership
+
+`specs/` contains PDK-independent device specifications.
+
+`placement/core/` contains reusable tile, plan, orientation, and spacing infrastructure.
+
+`placement/mos/` contains MOS-specific intent compilation, dummy handling, device binding, and placement construction.
+
+`physical/` contains typed placed-instance, logical-terminal, physical-access, obstacle, and physical-design snapshot models. Its MOS centroid adapter is transitional until placement builders return stable instance bindings directly.
+
+`primitives/` contains PDK/gLayout primitive factories.
+
+`routing/intents/`, `routing/planners/`, and `routing/routers/` implement the first routing slice. Route execution requires an explicit `PhysicalDesignSnapshot`.
+
+`verification/` contains Magic DRC, Magic extraction, Netgen LVS, process execution, SPICE inspection, and extracted-connectivity assertions.
+
+`outputs/` owns generated artifact paths. `examples/` contains package wiring only, not reusable engine logic.
+
+## Architectural rules
+
+- Keep high-level intent and pure planners independent of gLayout, Magic, and Netgen.
+- Do not add routing policy to placement builders or examples.
+- Separate logical terminals from physical access points.
+- Route execution requires explicit physical-design state.
+- Treat electrical, geometric, matching, symmetry, and separation requirements as typed constraints.
+- Filter candidates by hard constraints before ranking soft costs.
+- DRC success is not connectivity success; extraction or LVS must verify electrical intent.
+- Record major architectural decisions in `docs/adr/`.
+- Update `docs/VALIDATION_STATUS.md` only with demonstrated `/foss` results.
+
+## Near-term roadmap
+
+Completed foundation:
 
 ```text
-designs/scripts/matchmaker/src/matchmaker/
+✓ automatic extracted-connectivity assertions
+✓ typed PhysicalDesignSnapshot
+✓ logical TerminalRef and physical AccessPoint models
+✓ snapshot-backed obstacle-aware point-to-point route
 ```
 
-Generated circuit artifacts live under:
+Next development order:
 
 ```text
-designs/libs/core_analog/
+1. logical NetIntent and typed net/route-group constraints
+2. automatic access selection
+3. common RoutePlan and routing metrics
+4. routing-strategy dispatcher
+5. multi-terminal topology planning
+6. matched and differential routing
+7. congestion-aware multi-net routing
+8. independent schematic LVS and repair feedback
+9. capacitor-array and CDAC routing templates
 ```
-
-## Package Layout
-
-```text
-matchmaker/
-  specs/
-    mos_device_spec.py
-    mos_centroid_array_spec.py
-
-  placement/
-    core/
-      tile_plan.py
-      orientation_policy.py
-      spacing_policy.py
-      custom_grid_planner.py
-
-    mos/
-      mos_centroid_array_intent.py
-      mos_centroid_intent_compiler.py
-      mos_centroid_grid_compiler.py
-      mos_centroid_placement_request.py
-      mos_centroid_placement_builder.py
-      mos_dummy_policy.py
-      mos_group_device_binding.py
-
-    capacitors/
-    resistors/
-
-  primitives/
-    gf180_mos_primitive_factory.py
-    gf180_mos_primitive_options.py
-
-  outputs/
-    core_analog_cell_paths.py
-
-  routing/
-    intents/
-    planners/
-    routers/
-
-  verification/
-    drc/
-    lvs/
-    feedback/
-```
-
-## Architecture
-
-`specs/` defines structured descriptions of devices and resolved array specifications.
-
-`placement/core/` contains reusable placement infrastructure: tiles, placement plans, orientation policies, spacing policies, and grid conversion. This layer is intentionally not MOS-specific.
-
-`placement/mos/` contains MOS-specific centroid placement logic, including intent compilation, dummy handling, group-to-device binding, and the MOS placement builder.
-
-`primitives/` creates PDK-specific geometry. The current implementation targets GF180 MOS primitives through gLayout.
-
-`outputs/` manages generated file paths.
-
-`routing/` and `verification/` are reserved for the next major stages: smart routing, DRC/LVS execution, report parsing, and feedback-driven layout iteration.
-
-## Design Direction
-
-MatchMaker is intended to grow as a structured generator. High-level intent should describe what is needed. Deterministic planners should translate that intent into spatial representations. Builders should instantiate geometry. Verification modules should eventually close the loop.
-
-The tile grid is an internal placement representation. It is useful because placement is spatial, but it is not intended to be the only long-term interface. Standard placement strategies and explicit custom grids are both supported.
-
-## Current Limitations
-
-The engine does not yet perform routing, top-level pin creation, DRC, LVS, verification feedback, capacitor-array generation, resistor-array generation, or CDAC layout generation.
-
-Guard-ring or tap geometry may appear in generated GDS through the underlying GF180/gLayout MOS primitive behavior. MatchMaker does not yet implement an explicit array-level isolation policy.
-
-## Near-Term Roadmap
-
-The next development stage is to stabilize the placement strategy interface, add explicit isolation policy, add PFET demos, and begin the routing-intent layer. DRC/LVS runners and feedback parsing should follow after the routing interface is defined.
-
-Longer-term targets include matched transistor subblocks, capacitor arrays, CDAC layout support, and reusable verified analog layout cells.
 
 ## Team
 
-Team Los Pollos Hermanos
+Team Los Pollos Hermanos  
 SSCS Chipathon Track D: AI and LLM for Analog Circuits
 
-| Name / Handle | GitHub         | Affiliation              | Role                                |
-| ------------- | -------------- | ------------------------ | ----------------------------------- |
-| s_a_castillo  | @saul-castillo | Brown University, EE '28 | Team Lead and Layout Automation     |
-| Zeke_956      | @zeke956       | Brown University, EE '28 | DRC/LVS Verification Support        |
-| .nthony       | @nthony237     | Brown University, ME '28 | LLM & Natural Language Integration  |
+| Name / Handle | GitHub | Affiliation | Role |
+| --- | --- | --- | --- |
+| s_a_castillo | @saul-castillo | Brown University, EE '28 | Team Lead and Layout Automation |
+| Zeke_956 | @zeke956 | Brown University, EE '28 | DRC/LVS Verification Support |
+| .nthony | @nthony237 | Brown University, ME '28 | LLM & Natural Language Integration |
 
 ## Links
 
-* [Chipathon issue 70](https://github.com/sscs-ose/sscs-chipathon-2026/issues/70)
-* [MatchMaker repository](https://github.com/saul-castillo/MatchMaker)
+- [Chipathon issue 70](https://github.com/sscs-ose/sscs-chipathon-2026/issues/70)
+- [MatchMaker repository](https://github.com/saul-castillo/MatchMaker)
