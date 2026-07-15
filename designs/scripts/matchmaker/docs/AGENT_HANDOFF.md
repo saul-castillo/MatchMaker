@@ -12,7 +12,7 @@ This file is the compact current-state record for a future coding agent or contr
 - Active pull request: PR #3, modular routing dispatcher and non-inline Manhattan planning
 - PR #1 merged the routing/verification foundation.
 - PR #2 merged logical-net routing intent, automatic access selection, and common `RoutePlan` IR.
-- PR #3 has passed pure tests, Python compilation, the diagonal Manhattan `/foss` regression, and the original dogleg `/foss` regression. It is ready to leave draft after documentation is updated.
+- PR #3 has passed pure tests, Python compilation, the diagonal Manhattan `/foss` regression, and the original dogleg `/foss` regression. It is open, mergeable, out of draft, and ready for review.
 
 ## Mission
 
@@ -201,7 +201,7 @@ pre-LVS gate: passed
 
 Do not jump directly to multi-net A* routing.
 
-1. Merge PR #3 after final documentation and CI confirmation.
+1. Squash-merge PR #3 after final review.
 2. Treat committed routes as typed obstacles/resources in `PhysicalDesignSnapshot`.
 3. Add a GF180 routing-rule adapter for semantic width classes, allowed layers, spacing, and via selection.
 4. Add PDK-aware via planning and execution.
