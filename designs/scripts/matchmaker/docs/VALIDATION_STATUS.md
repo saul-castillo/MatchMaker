@@ -2,58 +2,65 @@
 
 ## Confirmed in the Chipathon `/foss` container
 
+The merged routing foundation has demonstrated:
+
 - MatchMaker environment setup loads successfully.
-- Routing-planner and verification-parser unit tests passed.
-- The centroid routing demo generated GDS successfully.
-- GF180 Magic loaded the target GDS and reported zero DRC violations.
-- The DRC adapter returned `passed=True` and `violation_count=0`.
-- Magic extracted the routed centroid GDS to SPICE.
-- The original straight route was DRC-clean but connected both intended A devices and both intervening B devices.
-- Bounding-box obstacle detection identified `B0` and `B1`.
-- The first layer-only C-route remained electrically wrong.
-- The attempted north/south access fallback failed safely because the installed GF180 primitive did not expose usable `gate_N` or `gate_S` ports.
-- The explicit spatial dogleg generated a visibly external route using outward endpoint access.
-- The spatial dogleg passed GF180 Magic DRC with zero violations.
-- Extraction showed the dogleg route net on exactly the two intended A instances, with no B-device connection.
-- The snapshot-backed one-command demo ran successfully with automatic connectivity gating and reported `connectivity passed: True` and `pre-LVS checks passed: True`.
+- Routing-planner and verification-parser unit tests pass.
+- The centroid routing demo generates GDS successfully.
+- GF180 Magic loads the target GDS and reports zero DRC violations.
+- Magic extracts the routed centroid GDS to SPICE.
+- A direct route and the first layer-only C-route were DRC-clean but electrically wrong: both connected the intended A devices and the intervening B devices.
+- Bounding-box obstacle detection identifies `B0` and `B1`.
+- The explicit same-layer spatial dogleg uses outward endpoint access and runs outside the array.
+- The dogleg passes GF180 Magic DRC with zero violations.
+- Extraction shows the dogleg net on exactly the two intended A instances, with no B-device connection.
+- The snapshot-backed one-command flow reports `connectivity passed: True` and `pre-LVS checks passed: True`.
 
-## Cleanup added after the latest `/foss` run
+## Confirmed on `feature/logical-net-routing-ir`
 
-The branch cleanup now also:
+The logical-net routing branch has now been rerun successfully in `/foss` and demonstrates:
 
-- removes the stale routing document that described the failed north/south C-route;
-- removes the unused `routing/ports` compatibility package;
-- removes the obsolete C-route fallback function and its tests;
-- removes duplicate and mapping-based obstacle representations;
-- makes `PhysicalDesignSnapshot` mappings read-only and internally validated;
-- requires route execution to receive an explicit snapshot;
-- removes routing dependence on `Component.info` metadata;
-- updates tests and architecture documentation to match the cleaned boundaries.
+- logical `NetIntent` using `TerminalRef` rather than concrete primitive-port names;
+- typed `NetConstraintProfile` and `RouteGroupConstraintProfile` models;
+- deterministic automatic access candidate generation;
+- allowed/forbidden-layer, obstacle, maximum-length, and maximum-bend filtering;
+- deterministic length and bend cost ranking;
+- common `RoutePlan`, `RouteSegment`, `ViaPlan`, `RouteMetrics`, and `ConstraintCheck` models;
+- a mechanical same-layer route-plan executor;
+- migration of the centroid demo from fixed `gate_E` endpoints to logical `A0.gate` and `A1.gate` terminals;
+- automatic recovery of the validated `A0__gate_W` and `A1__gate_E` outward dogleg;
+- route metrics of approximately 118.24 layout units, four bends, width 0.5, and estimated cost approximately 119.24;
+- reduction of promoted MOS routing access points from 21,520 unfiltered hierarchy ports to 128 canonical external terminal accesses across eight instances;
+- GF180 Magic DRC with zero violations;
+- successful Magic SPICE extraction;
+- exact extracted connectivity on the two intended A instances only;
+- `connectivity passed: True` and `pre-LVS checks passed: True`.
 
-These cleanup changes require one final `/foss` demo rerun before merge. The pure-test and compilation workflow must also pass at the cleanup head.
+GitHub Actions pure tests and Python compilation pass at the filtered-access branch head.
 
-## Current implemented foundation
+## Current implementation boundary
+
+Implemented:
 
 - deterministic MOS centroid placement;
-- stable physical access naming;
-- typed, read-only physical-design snapshot;
-- snapshot-required point-to-point route execution;
-- typed obstacle detection;
-- explicit same-layer spatial dogleg routing;
-- GF180 Magic DRC;
-- Magic SPICE extraction;
+- typed, read-only `PhysicalDesignSnapshot`;
+- filtered canonical external MOS access points;
+- logical two-terminal net intent;
+- typed per-net and route-group constraint models;
+- automatic same-layer straight/dogleg access selection;
+- common route-plan and metrics IR;
+- mechanical same-layer segment execution;
+- GF180 Magic DRC and extraction;
 - automatic extracted-connectivity checks;
-- Netgen LVS runner infrastructure;
-- structured artifact paths, reports, and failure results.
+- Netgen LVS runner infrastructure.
 
-## Not yet demonstrated
+Not yet demonstrated or implemented:
 
-- a fresh `/foss` rerun after the final cleanup refactor;
-- a passing Netgen LVS comparison against an independent schematic netlist;
-- logical `NetIntent` and automatic physical access selection;
-- typed net and route-group constraints;
-- a common route-plan and routing-metrics model;
-- general multi-terminal routing;
-- symmetry-constrained and matched-length routing;
-- channel assignment for simultaneous nets;
-- routing congestion and route-to-route obstacle handling.
+- a passing independent schematic Netgen LVS comparison;
+- via planning and execution;
+- PDK-resolved width classes and layer policies;
+- general non-inline Manhattan access planning;
+- multi-terminal topology planning;
+- matched, differential, symmetry, shielding, and separation group planning;
+- route-to-route obstacle and congestion handling;
+- stable logical instance identity through extraction.

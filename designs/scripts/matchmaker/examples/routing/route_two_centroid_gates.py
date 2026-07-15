@@ -5,6 +5,7 @@ from pathlib import Path
 from glayout import gf180
 
 from matchmaker.outputs.core_analog_cell_paths import create_core_analog_cell_paths
+from matchmaker.physical.models import TerminalRef
 from matchmaker.physical.mos_centroid_snapshot import (
     create_mos_centroid_physical_design_snapshot,
 )
@@ -15,13 +16,11 @@ from matchmaker.placement.mos.mos_centroid_intent_compiler import (
 from matchmaker.placement.mos.mos_centroid_placement_builder import (
     build_mos_centroid_placement_from_request,
 )
-from matchmaker.routing.intents.point_to_point_route_intent import (
-    PointToPointRouteIntent,
-    RouteEndpoint,
+from matchmaker.routing.intents.net_intent import NetConstraintProfile, NetIntent
+from matchmaker.routing.planners.two_terminal_net_planner import (
+    plan_two_terminal_net,
 )
-from matchmaker.routing.routers.glayout_point_to_point_router import (
-    route_point_to_point_intent,
-)
+from matchmaker.routing.routers.route_plan_executor import execute_route_plan
 from matchmaker.specs.mos_device_spec import MosDeviceSpec
 from matchmaker.verification.generated_cell_verifier import verify_generated_cell
 from matchmaker.verification.netlist.connectivity_assertions import (
@@ -52,7 +51,7 @@ def build_routed_demo():
         fingers=1,
     )
 
-    intent = MosCentroidArrayIntent(
+    placement_intent = MosCentroidArrayIntent(
         cell_name=CELL_NAME,
         device_a=nfet_a,
         device_b=nfet_b,
@@ -60,40 +59,38 @@ def build_routed_demo():
         cols=4,
         pattern_strategy="common centroid",
     )
-    request = compile_mos_centroid_intent_to_placement_request(intent)
+    request = compile_mos_centroid_intent_to_placement_request(placement_intent)
     top = build_mos_centroid_placement_from_request(request)
     physical_design = create_mos_centroid_physical_design_snapshot(
         component=top,
         plan=request.plan,
     )
 
-    route_intent = PointToPointRouteIntent(
-        net_name="A_gate_pair",
-        source=RouteEndpoint(
-            instance_name=SOURCE_INSTANCE,
-            port_name="gate_E",
+    net_intent = NetIntent(
+        name="A_gate_pair",
+        terminals=(
+            TerminalRef(SOURCE_INSTANCE, "gate"),
+            TerminalRef(TARGET_INSTANCE, "gate"),
         ),
-        target=RouteEndpoint(
-            instance_name=TARGET_INSTANCE,
-            port_name="gate_E",
+        constraints=NetConstraintProfile(
+            width_class="signal",
+            avoid_obstacles=True,
+            obstacle_clearance=1.0,
         ),
-        avoid_obstacles=True,
-        obstacle_clearance=1.0,
     )
-    executed = route_point_to_point_intent(
-        component=top,
-        pdk=gf180,
-        intent=route_intent,
+    route_plan = plan_two_terminal_net(
+        intent=net_intent,
         physical_design=physical_design,
     )
-    return top, physical_design, executed
+    executed = execute_route_plan(component=top, plan=route_plan)
+    return top, physical_design, net_intent, executed
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Generate, route, DRC, extract, and connectivity-check the "
-            "centroid routing demo."
+            "Generate, logically route, DRC, extract, and connectivity-check "
+            "the centroid routing demo."
         )
     )
     parser.add_argument(
@@ -108,16 +105,28 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    top, physical_design, executed = build_routed_demo()
+    top, physical_design, net_intent, executed = build_routed_demo()
+    route_plan = executed.plan
     paths = create_core_analog_cell_paths(args.designs_root, CELL_NAME)
     top.write_gds(str(paths.final_gds))
 
-    print(f"route strategy: {executed.plan.strategy}")
-    print(f"straight-route blockers: {executed.blockers or '(none)'}")
-    print(f"actual source access: {executed.plan.source_top_port_name}")
-    print(f"actual target access: {executed.plan.target_top_port_name}")
-    print(f"detour direction: {executed.detour_direction or '(none)'}")
-    print(f"detour channel coordinate: {executed.detour_channel_coordinate}")
+    print(
+        "logical terminals: "
+        + ", ".join(
+            f"{terminal.instance_name}.{terminal.terminal_name}"
+            for terminal in net_intent.terminals
+        )
+    )
+    print(f"route strategy: {route_plan.strategy}")
+    print(f"straight-route blockers: {route_plan.blockers or '(none)'}")
+    print(f"actual source access: {route_plan.selected_access_point_names[0]}")
+    print(f"actual target access: {route_plan.selected_access_point_names[1]}")
+    print(f"detour direction: {route_plan.channel_direction or '(none)'}")
+    print(f"detour channel coordinate: {route_plan.channel_coordinate}")
+    print(f"route length: {route_plan.metrics.total_length}")
+    print(f"route bends: {route_plan.metrics.bend_count}")
+    print(f"route width: {route_plan.metrics.resolved_width}")
+    print(f"route estimated cost: {route_plan.metrics.estimated_cost}")
     print(f"physical instances: {len(physical_design.instances)}")
     print(f"physical access points: {len(physical_design.access_points)}")
     print(f"GDS: {paths.final_gds}")

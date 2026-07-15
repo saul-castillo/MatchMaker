@@ -1,10 +1,10 @@
 # MatchMaker Engineering Map
 
-This is the first document to read before changing the engine. It is optimized for human contributors and coding agents that need to recover the architecture, implementation boundary, and next development step without reconstructing them from examples or commit history.
+This is the first document to read before changing the engine. It is written for human contributors and coding agents that need to recover the architecture, implementation boundary, and next development step without reconstructing them from examples or commit history.
 
 ## Mission
 
-MatchMaker is a deterministic, constraint-driven analog layout synthesis engine. It must preserve circuit connectivity, matching intent, symmetry, electrical constraints, and verification evidence while translating structured design intent into GF180 layout.
+MatchMaker is a deterministic, constraint-driven analog layout synthesis engine. It translates structured circuit and layout intent into GF180 geometry while preserving connectivity, matching intent, symmetry, electrical constraints, and verification evidence.
 
 Long-term targets include matched MOS structures, switch networks, capacitor arrays, CDACs, and larger reusable analog cells.
 
@@ -18,7 +18,7 @@ Long-term targets include matched MOS structures, switch networks, capacitor arr
 5. the relevant tests
 ```
 
-`VALIDATION_STATUS.md` is the source of truth for what has actually been demonstrated in the Chipathon `/foss` environment. A unit test or plausible implementation is not an integration-validated layout flow.
+`VALIDATION_STATUS.md` is the source of truth for results demonstrated in the Chipathon `/foss` environment. Pure tests and plausible geometry do not constitute physical integration validation.
 
 ## Golden pipeline
 
@@ -27,11 +27,10 @@ high-level circuit and layout intent
 → typed device, placement, net, and route-group intent
 → deterministic intent compilation
 → placement plan
-→ physical-design snapshot
+→ PhysicalDesignSnapshot
 → routing problem
-→ route plan
+→ RoutePlan
 → geometry execution
-→ local geometric and connectivity checks
 → GDS
 → DRC
 → extraction and connectivity audit
@@ -39,55 +38,78 @@ high-level circuit and layout intent
 → targeted repair or accepted cell
 ```
 
-Every major module should own one translation in this pipeline. A module should not silently perform work belonging to several stages.
+Each major module should own one translation in this pipeline. Do not hide planning inside an executor, verification tool, or example.
 
-## Current demonstrated slice
+## Stable demonstrated foundation
+
+The merged routing foundation demonstrated:
 
 ```text
 MOS centroid intent
 → placement request
 → GF180 MOS placement
 → typed PhysicalDesignSnapshot
-→ obstacle-aware point-to-point routing
-→ explicit same-layer spatial dogleg
+→ obstacle-aware fixed-access route request
+→ external same-layer spatial dogleg
 → GDS
-→ Magic DRC
+→ Magic DRC: zero violations
 → Magic extraction
-→ automatic exact-participant connectivity assertion
+→ exact shared-net participant assertion: two intended A devices only
 ```
 
-The snapshot-backed demo has been demonstrated in `/foss`: zero DRC violations, successful extraction, and a routed node connected to exactly the two intended A devices.
+This result proved that DRC-clean geometry can still be electrically wrong and established extraction/connectivity gating as mandatory.
 
-## Core working principle
+## Current development slice
 
-Routing is a constrained physical-synthesis problem, not a direct call from two named ports to a route primitive.
+The `feature/logical-net-routing-ir` branch migrates the same regression from physical-port intent to logical-net intent:
 
-Canonical routing input:
+```text
+NetIntent(A0.gate, A1.gate)
++ NetConstraintProfile
++ PhysicalDesignSnapshot
+→ automatic access candidate generation
+→ hard-constraint filtering
+→ deterministic cost ranking
+→ RoutePlan
+→ mechanical route-plan execution
+→ existing DRC, extraction, and connectivity gate
+```
+
+The example no longer selects `gate_E`, `gate_W`, or any other physical port. The planner must recover the previously validated outward `A0__gate_W` and `A1__gate_E` access pair from placement context.
+
+The pure tests and compilation workflow cover this branch. A fresh `/foss` run is still required before the migrated flow is considered physically validated.
+
+## Core routing principle
+
+Routing is a constrained physical-synthesis problem, not a direct call between two named ports.
+
+Canonical input:
 
 ```text
 logical net or route group
-+ logical terminals that must be connected
-+ electrical and analog constraints
++ logical terminals
++ typed hard constraints
++ typed soft-cost weights
 + available physical access points
 + placed obstacles and keepouts
 + routing-layer resources
-+ routes already committed
++ already committed routes
 ```
 
-Canonical routing output:
+Canonical output:
 
 ```text
-typed RoutePlan
-+ selected terminal access points
-+ topology
-+ coarse path or routing channel
-+ detailed Manhattan segments and vias
-+ predicted metrics
-+ hard-constraint evidence
-+ strategy provenance
+RoutePlan
++ selected access points
++ strategy and topology
++ exact Manhattan segments and vias
++ width and layer decisions
++ metrics
++ constraint-check evidence
++ blockers and strategy provenance
 ```
 
-Geometry is produced only after a plan exists.
+Geometry is generated only after the plan is complete.
 
 ## Terminal versus access point
 
@@ -100,7 +122,7 @@ CAP3.top
 SW1.output
 ```
 
-A physical access point is one legal place where that terminal can be contacted:
+A physical access point is one legal contact location for that terminal:
 
 ```text
 A0__gate_E
@@ -108,24 +130,47 @@ A0__gate_W
 metal-2 access at coordinate (x, y)
 ```
 
-Routing intent should converge toward logical `TerminalRef` objects rather than permanently selecting a physical port before the placement context is evaluated.
-
-Current physical models:
+Current physical models live in `physical/models.py`:
 
 ```text
-physical/models.py
-  TerminalRef
-  AccessPoint
-  PlacedInstance
-  RoutingObstacle
-  PhysicalDesignSnapshot
+TerminalRef
+AccessPoint
+PlacedInstance
+RoutingObstacle
+PhysicalDesignSnapshot
 ```
 
-The current point-to-point intent still names concrete access ports. That is transitional debt. The next routing milestone replaces it with logical net intent and an explicit access-selection planner.
+`PhysicalDesignSnapshot.access_points_for(TerminalRef(...))` is the canonical bridge from electrical identity to physical choices.
 
-## Physical-design snapshot
+## Canonical routing data contracts
 
-Routing consumes one explicit physical state object:
+### Logical intent
+
+`routing/intents/net_intent.py`
+
+```text
+NetIntent
+NetConstraintProfile
+RouteGroupIntent
+RouteGroupConstraintProfile
+```
+
+`NetIntent` names logical terminals only. It does not name primitive ports.
+
+`NetConstraintProfile` currently represents:
+
+- semantic width class and optional explicit width;
+- obstacle avoidance and clearance;
+- allowed and forbidden layers;
+- maximum length and bend count;
+- length, bend, and via cost weights;
+- routing priority.
+
+`RouteGroupConstraintProfile` reserves typed fields for separation, matched length, symmetry, equal bend/via count, and shielding. Group planning is not implemented yet.
+
+### Physical state
+
+`physical/models.py`
 
 ```python
 PhysicalDesignSnapshot(
@@ -139,153 +184,107 @@ PhysicalDesignSnapshot(
 )
 ```
 
-Current construction path:
+Snapshot mappings are read-only. New routing code must consume this object rather than inspect reference order, infer identities independently, or store policy in `Component.info`.
+
+### Route-plan IR
+
+`routing/plans/route_plan.py`
 
 ```text
-physical/mos_centroid_snapshot.py
-  create_mos_centroid_physical_design_snapshot(...)
+RoutePlan
+RouteSegment
+ViaPlan
+RouteMetrics
+ConstraintCheck
 ```
 
-The snapshot mappings are read-only. Route execution requires the snapshot; planners must not recover physical state from `Component.info` or invent independent instance bindings.
+A valid `RoutePlan` contains only Manhattan, nonzero segments and no failed hard constraint. Metrics are checked against the plan geometry.
 
-The MOS centroid adapter still binds placement tiles to component references by order because the placement builder returns only a component. Target placement output:
+### Planning
 
-```python
-PlacementResult(
-    component=...,
-    instance_bindings={tile_name: physical_reference_id},
-    physical_design=PhysicalDesignSnapshot(...),
-)
+`routing/planners/two_terminal_access_selector.py`
+
+Current candidate pipeline:
+
+```text
+enumerate source and target AccessPoint pairs
+→ reject forbidden or incompatible layers
+→ retain same-layer inline launch pairs
+→ detect direct-path blockers
+→ emit clear straight candidate or external dogleg candidate
+→ reject maximum-length and maximum-bend violations
+→ rank by deterministic cost and stable name tie-breaks
 ```
 
-## Constraint model
+`routing/planners/two_terminal_net_planner.py` converts the selected candidate into exact segments, resolved width, metrics, and constraint checks.
 
-Constraints are typed and divided into hard requirements and soft costs.
+The current slice intentionally supports two-terminal, same-layer straight and external-dogleg plans only. Unsupported cases fail rather than silently falling back to unsafe geometry.
 
-### Hard constraints
+### Execution
 
-A route is invalid when any hard constraint fails:
+`routing/routers/route_plan_executor.py`
 
-- connect exactly the intended terminals;
-- do not connect unrelated terminals;
-- obey PDK width, spacing, enclosure, and via rules;
-- obey allowed and forbidden routing layers;
-- avoid obstacles and keepouts;
-- satisfy required net separation;
-- satisfy mandatory symmetry or topology;
-- obey strict maximum length, resistance, or via count when specified.
+The executor consumes `RoutePlan` and draws its resolved segments. It does not select access, topology, channel, width, or strategy. Via execution remains unimplemented and fails explicitly.
 
-### Soft costs
+The old fixed-access point-to-point router remains transitional compatibility code. New examples and new features should use logical `NetIntent` and `RoutePlan`.
 
-Soft costs rank only valid candidates:
+## Hard constraints and soft costs
+
+Hard constraints determine feasibility:
+
+- exact intended connectivity;
+- no unintended terminals;
+- allowed and forbidden layers;
+- obstacle and keepout avoidance;
+- width, spacing, enclosure, and via legality;
+- maximum length, resistance, bend, or via limits;
+- required symmetry, topology, separation, or shielding.
+
+Soft costs rank feasible candidates:
 
 - wire length;
+- bend and via count;
 - estimated resistance and capacitance;
-- via count;
-- bend count;
 - congestion;
 - coupling exposure;
 - matched-length error;
 - symmetry-axis deviation;
 - scarce-channel usage.
 
-Hard constraints are checked before cost ranking.
+Hard constraints are always evaluated before ranking.
 
-### Translating analog language
+## Hybrid strategy ladder
 
-```text
-"keep this short"
-→ max_length and/or max_resistance
-
-"make this thick"
-→ width class, current target, PDK-resolved width
-
-"keep this away from high potential"
-→ pairwise or class separation, optional shielding, layer policy
-
-"match these traces"
-→ topology, length, via, bend, and symmetry constraints
-
-"sensitive node"
-→ coupling/separation class and routing priority
-```
-
-Separation, shielding, matching, and symmetry relate multiple nets. They belong in route-group or explicit pairwise constraints, not only in isolated per-net tags.
-
-## Hybrid routing architecture
-
-Use a deterministic strategy ladder behind a common planner interface:
+Do not build one universal router prematurely. Strategies share the same intent, snapshot, plan, and verification contracts:
 
 ```text
 1. direct straight route
-2. simple L/C route family
+2. simple Manhattan family
 3. explicit spatial dogleg or reserved channel
-4. coarse rectilinear routing graph with A* or equivalent search
+4. coarse rectilinear graph search
 5. multi-terminal topology plus branch routing
-6. multi-net congestion handling and negotiated rip-up/reroute
+6. matched and differential templates
+7. congestion-aware negotiated multi-net routing
 ```
 
-Analog templates remain first-class strategies:
+Analog templates remain first-class planners rather than special geometry mutations inside examples.
 
-```text
-StraightRoutePlanner
-SpatialDoglegPlanner
-DifferentialPairTemplatePlanner
-MatchedBusPlanner
-CdacRoutingTemplatePlanner
-RectilinearGraphPlanner
-```
-
-Templates and search planners must emit the same `RoutePlan` representation and use the same constraint and metric checks.
-
-## Routing stages
-
-### 1. Net and route-group compilation
-
-Resolve logical connectivity and typed constraints into a `RoutingProblem`.
-
-### 2. Topology planning
-
-Two-terminal topology is trivial. Multi-terminal nets require a tree, bus, star, chain, H-tree, or analog-specific topology before detailed segments are drawn.
-
-### 3. Access selection
-
-Choose physical access candidates for every logical terminal. Access selection must understand transformed orientation, obstacles, route-group rules, and layer availability.
-
-### 4. Coarse path or channel planning
-
-Choose which side of obstacles, reserved channel, or coarse routing graph a net uses. This stage handles global spatial relations and congestion.
-
-### 5. Detailed geometry planning
-
-Resolve exact Manhattan segments, widths, layers, vias, and corner geometry using PDK rules.
-
-### 6. Execution
-
-Convert an already-resolved plan into gLayout/gdsfactory geometry. Executors are mechanically simple and do not invent topology or access policy.
-
-### 7. Validation and feedback
-
-Run cheap local checks first, then DRC, extraction/connectivity assertions, and LVS. Failures return structured evidence rather than triggering arbitrary geometry mutation.
-
-## Connectivity verification
-
-DRC proves geometric legality, not electrical intent. The first smoke test produced a DRC-clean route that connected four devices instead of two.
+## Verification boundary
 
 ```text
 DRC pass != connectivity pass
 ```
 
-Current connectivity API:
+Every routing integration test that changes connectivity must include extraction or LVS evidence. Current generated-cell verification provides:
 
 ```text
-verification/netlist/connectivity_assertions.py
-  SharedNetConnectivityExpectation
-  SharedNetConnectivityResult
-  evaluate_extracted_shared_net_connectivity(...)
+Magic DRC
+→ Magic SPICE extraction
+→ exact shared-net participant assertion
+→ Netgen LVS infrastructure
 ```
 
-The current assertion identifies expected participants by extracted subcircuit-name multiset. This is sufficient for the present generated demo but not the final identity model. Future extraction work should preserve stable logical instance identity so assertions can refer directly to instance IDs such as `A0` and `A1`.
+The current participant assertion uses extracted subcircuit-name multisets. Stable logical instance identity in extracted netlists remains future work.
 
 ## Package ownership
 
@@ -306,13 +305,16 @@ primitives/
   PDK/gLayout primitive construction
 
 routing/intents/
-  routing requests; current API still names physical access ports
+  logical net and route-group requests; legacy fixed-access intent remains
+
+routing/plans/
+  common execution-ready route-plan IR and metrics
 
 routing/planners/
-  pure route-family, obstacle, and spatial planning
+  pure access selection, obstacle checks, and route-plan compilation
 
 routing/routers/
-  physical route execution adapters
+  mechanical physical execution adapters
 
 verification/
   DRC, extraction, connectivity assertions, LVS, and report parsing
@@ -327,75 +329,69 @@ examples/
 ## Dependency rules
 
 1. Intent and constraint models do not import gLayout, gdsfactory, Magic, or Netgen.
-2. Pure planners operate on typed geometry and metadata and do not mutate a component.
-3. PDK-specific rule resolution belongs in PDK adapters or physical execution.
-4. Geometry executors may import gLayout/gdsfactory but do not invent high-level policy.
+2. Pure planners operate on typed state and do not mutate components.
+3. PDK rule resolution belongs in PDK adapters or detailed physical planning.
+4. Executors may import gLayout/gdsfactory but do not invent access or topology policy.
 5. Verification adapters own external-tool invocation and parsing.
 6. Examples contain no reusable engine logic.
-7. A new routing strategy requires a pure planner test and an execution/integration test.
-8. DRC success is never reported as connectivity success.
-9. Route execution requires `PhysicalDesignSnapshot`.
-10. Major architectural choices require an ADR.
+7. New strategies require pure planner tests and `/foss` integration validation.
+8. DRC success is never reported as electrical success.
+9. New routing work consumes `PhysicalDesignSnapshot`.
+10. Major architectural decisions require an ADR.
 
-## Current architectural debt
+## Known debt
 
 Do not copy these limitations into new subsystems:
 
 - placement returns only a component rather than a typed `PlacementResult`;
 - snapshot construction binds tiles to references by order;
-- point-to-point intent fixes access ports such as `gate_E`;
-- the current router combines access replacement, strategy selection, and execution;
-- route plans do not yet share one complete typed geometry/metrics model;
-- extracted instance identity is inferred through generated subcircuit names;
-- no typed net or route-group constraint model exists.
+- the legacy point-to-point API still names physical access ports;
+- current logical planning supports only two-terminal same-layer routes;
+- width classes do not yet resolve through a PDK rule adapter;
+- via planning and execution are not implemented;
+- committed routes are not yet incorporated as routing obstacles/resources;
+- extracted instance identity is inferred through generated subcircuit names.
 
-## Development sequence
+## Development order
 
-Completed foundation:
-
-```text
-✓ extracted-connectivity assertion API
-✓ automatic connectivity gate in the routed demo
-✓ TerminalRef and AccessPoint
-✓ PlacedInstance and RoutingObstacle
-✓ read-only PhysicalDesignSnapshot
-✓ snapshot-required route execution
-✓ typed-obstacle straight blocker and spatial dogleg planners
-```
-
-Next milestone:
+Completed in the current branch:
 
 ```text
-1. logical NetIntent and typed NetConstraintProfile
-2. RouteGroupIntent and inter-net constraints
-3. automatic access-selection planner
-4. common RoutePlan, RouteSegment, ViaPlan, and RouteMetrics
-5. strategy dispatcher for straight, Manhattan, and dogleg planners
+✓ logical NetIntent
+✓ typed per-net and route-group constraints
+✓ automatic two-terminal access selection
+✓ common RoutePlan, RouteSegment, ViaPlan, and RouteMetrics
+✓ mechanical route-plan executor
+✓ migration of the centroid regression to logical terminals
 ```
 
-Then:
+Next, after `/foss` validation:
 
 ```text
-6. multi-terminal topology planning
-7. matched and differential route-group planners
-8. coarse routing graph and congestion model
-9. independent schematic LVS
-10. targeted verification-driven repair
-11. capacitor-array and CDAC routing templates
+1. strategy dispatcher with candidate provenance and rejection reports
+2. committed-route resources and route-to-route obstacles
+3. multi-terminal topology planning
+4. PDK width/layer/via rule resolution
+5. matched and differential route-group planners
+6. coarse routing graph and congestion model
+7. independent schematic LVS
+8. targeted verification-driven repair
+9. capacitor-array and CDAC routing templates
 ```
 
-Do not jump directly to multi-net A* routing before the constraint and common-plan contracts exist.
+Do not jump to multi-net A* routing before the current logical-intent and common-plan contracts are physically validated.
 
 ## Change checklist
 
 Before committing engine work, verify:
 
 - Which pipeline translation does this module own?
-- Is the input typed and independent of execution tools where possible?
+- Is the input typed and independent of execution tools?
 - Is policy inside a planner rather than an executor or example?
 - Does the change introduce hidden physical state outside the snapshot?
-- Are hard constraints distinct from soft costs?
+- Are hard constraints separate from soft costs?
 - Is logical terminal identity separate from physical access?
-- Does the test prove connectivity when connectivity matters?
+- Does the plan retain metrics, blockers, checks, and provenance?
+- Does the integration test prove connectivity?
 - Has `VALIDATION_STATUS.md` been updated without overstating `/foss` validation?
-- Does a major design decision require a new ADR?
+- Does the decision require a new ADR?
