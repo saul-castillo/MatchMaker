@@ -59,10 +59,11 @@ def create_mos_centroid_physical_design_snapshot(
     plan: PlacementPlan,
     separator: str = "__",
 ) -> PhysicalDesignSnapshot:
-    """Promote tile ports and capture stable placed-instance/access metadata.
+    """Promote tile ports and capture placed-instance/access metadata.
 
-    The reference-order binding is a transitional adapter for the current MOS
-    placement builder. Future builders should return this mapping directly.
+    Reference-order binding is temporary because the existing MOS placement
+    builder returns only a component. Future placement builders should return
+    stable instance bindings directly.
     """
     placeable_tiles = [tile for tile in plan.tiles if tile.role != "empty"]
     references = _get_component_references(component)
@@ -135,22 +136,13 @@ def create_mos_centroid_physical_design_snapshot(
             )
         )
 
-    terminal_access = {
-        terminal: tuple(names)
-        for terminal, names in terminal_access_names.items()
-    }
-    snapshot = PhysicalDesignSnapshot(
+    return PhysicalDesignSnapshot(
         component=component,
         instances=placed_instances,
         access_points=access_points,
-        terminal_access=terminal_access,
+        terminal_access={
+            terminal: tuple(names)
+            for terminal, names in terminal_access_names.items()
+        },
         obstacles=tuple(obstacles),
     )
-
-    # Transitional metadata for legacy callers. New routing code should consume
-    # the snapshot directly instead of reading Component.info.
-    component.info["matchmaker_port_separator"] = separator
-    component.info["matchmaker_routing_instances"] = tuple(placed_instances)
-    component.info["matchmaker_routing_obstacles"] = snapshot.legacy_obstacles()
-    component.info["matchmaker_physical_snapshot_version"] = 1
-    return snapshot
