@@ -14,10 +14,12 @@ class GeneratedCellPathsTests(unittest.TestCase):
             self.assertTrue(paths.netlist_dir.is_dir())
             self.assertTrue(paths.drc_report_dir.is_dir())
             self.assertTrue(paths.extraction_report_dir.is_dir())
+            self.assertTrue(paths.connectivity_report_dir.is_dir())
             self.assertTrue(paths.lvs_report_dir.is_dir())
             self.assertEqual(paths.final_gds.name, "demo.gds")
             self.assertEqual(paths.extracted_netlist.name, "demo.spice")
             self.assertEqual(paths.extraction_report.name, "demo_extraction.rpt")
+            self.assertEqual(paths.connectivity_report.name, "demo_connectivity.rpt")
 
 
 if __name__ == "__main__":
