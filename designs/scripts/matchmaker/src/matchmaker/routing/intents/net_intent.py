@@ -4,7 +4,7 @@ from typing import Literal
 from matchmaker.physical.models import LayerRef, TerminalRef
 
 
-RouteStrategyPreference = Literal["auto", "straight", "dogleg"]
+RouteStrategyPreference = Literal["auto", "straight", "manhattan", "dogleg"]
 
 
 @dataclass(frozen=True)
