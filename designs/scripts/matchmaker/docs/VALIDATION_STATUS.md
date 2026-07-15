@@ -2,65 +2,115 @@
 
 ## Confirmed in the Chipathon `/foss` container
 
-The merged routing foundation has demonstrated:
+The merged `main` flow has demonstrated:
 
 - MatchMaker environment setup loads successfully.
-- Routing-planner and verification-parser unit tests pass.
-- The centroid routing demo generates GDS successfully.
-- GF180 Magic loads the target GDS and reports zero DRC violations.
-- Magic extracts the routed centroid GDS to SPICE.
-- A direct route and the first layer-only C-route were DRC-clean but electrically wrong: both connected the intended A devices and the intervening B devices.
-- Bounding-box obstacle detection identifies `B0` and `B1`.
-- The explicit same-layer spatial dogleg uses outward endpoint access and runs outside the array.
-- The dogleg passes GF180 Magic DRC with zero violations.
-- Extraction shows the dogleg net on exactly the two intended A instances, with no B-device connection.
-- The snapshot-backed one-command flow reports `connectivity passed: True` and `pre-LVS checks passed: True`.
+- Routing and verification unit tests pass.
+- The MOS centroid demo generates GDS successfully.
+- Logical `NetIntent(A0.gate, A1.gate)` automatically selects physical access.
+- The blocked direct path identifies `B0` and `B1`.
+- The planner selects outward `A0__gate_W` and `A1__gate_E` access.
+- The external same-layer dogleg runs outside the device row.
+- Promoted routing access was reduced from 21,520 hierarchy ports to 128 canonical MOS accesses across eight instances.
+- GF180 Magic DRC reports zero violations.
+- Magic extracts the routed layout to SPICE.
+- Extracted connectivity contains exactly the two intended A instances and no B instances.
+- The one-command flow reports `connectivity passed: True` and `pre-LVS checks passed: True`.
 
-## Confirmed on `feature/logical-net-routing-ir`
+## Implemented on `feature/manhattan-routing-dispatcher`
 
-The logical-net routing branch has now been rerun successfully in `/foss` and demonstrates:
+The current branch adds:
 
-- logical `NetIntent` using `TerminalRef` rather than concrete primitive-port names;
-- typed `NetConstraintProfile` and `RouteGroupConstraintProfile` models;
-- deterministic automatic access candidate generation;
-- allowed/forbidden-layer, obstacle, maximum-length, and maximum-bend filtering;
-- deterministic length and bend cost ranking;
-- common `RoutePlan`, `RouteSegment`, `ViaPlan`, `RouteMetrics`, and `ConstraintCheck` models;
-- a mechanical same-layer route-plan executor;
-- migration of the centroid demo from fixed `gate_E` endpoints to logical `A0.gate` and `A1.gate` terminals;
-- automatic recovery of the validated `A0__gate_W` and `A1__gate_E` outward dogleg;
-- route metrics of approximately 118.24 layout units, four bends, width 0.5, and estimated cost approximately 119.24;
-- reduction of promoted MOS routing access points from 21,520 unfiltered hierarchy ports to 128 canonical external terminal accesses across eight instances;
-- GF180 Magic DRC with zero violations;
-- successful Magic SPICE extraction;
-- exact extracted connectivity on the two intended A instances only;
-- `connectivity passed: True` and `pre-LVS checks passed: True`.
+- common `RouteCandidate`, `CandidateRejection`, and `StrategyDispatchResult` models;
+- modular straight, Manhattan, and external-dogleg strategy planners;
+- deterministic strategy dispatch with common hard-limit filtering;
+- candidate deduplication, ranking, provenance, and rejection evidence;
+- same-layer non-inline L routes for perpendicular accesses;
+- same-layer non-inline Z routes for parallel accesses;
+- midpoint, obstacle-edge, and outer channel candidates;
+- outward endpoint-orientation checking;
+- full-polyline obstacle checking;
+- `plan_two_terminal_net_with_report(...)`;
+- a parameterized centroid routing demo for selecting arbitrary instance pairs.
 
-GitHub Actions pure tests and Python compilation pass at the filtered-access branch head.
+GitHub Actions unit tests and Python compilation pass for the implementation branch.
+
+## Required `/foss` validation for PR #3
+
+First rerun the existing dogleg regression:
+
+```bash
+python scripts/matchmaker/examples/routing/route_two_centroid_gates.py
+```
+
+Required result:
+
+```text
+logical terminals: A0.gate, A1.gate
+route strategy: dogleg
+actual source access: A0__gate_W
+actual target access: A1__gate_E
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: True
+pre-LVS checks passed: True
+```
+
+Then run the diagonal Manhattan regression:
+
+```bash
+python scripts/matchmaker/examples/routing/route_two_centroid_gates.py \
+  --cell-name nfet_centroid_diagonal_gate_route_demo \
+  --source-instance A0 \
+  --target-instance A2
+```
+
+Expected planning result:
+
+```text
+logical terminals: A0.gate, A2.gate
+route strategy: manhattan
+actual source access: A0__gate_E
+actual target access: A2__gate_W
+route bends: 2
+DRC passed: True
+extraction passed: True
+connectivity passed: True
+pre-LVS checks passed: True
+```
+
+The exact selected channel coordinate may depend on transformed GF180 access geometry. The required invariants are a clear non-inline same-layer Manhattan route and extracted connectivity on exactly A0 and A2.
 
 ## Current implementation boundary
 
-Implemented:
+Implemented and physically validated on `main`:
 
 - deterministic MOS centroid placement;
-- typed, read-only `PhysicalDesignSnapshot`;
-- filtered canonical external MOS access points;
+- typed read-only `PhysicalDesignSnapshot`;
+- filtered canonical MOS terminal access;
 - logical two-terminal net intent;
 - typed per-net and route-group constraint models;
-- automatic same-layer straight/dogleg access selection;
+- same-layer straight and external-dogleg planning;
 - common route-plan and metrics IR;
-- mechanical same-layer segment execution;
+- mechanical same-layer execution;
 - GF180 Magic DRC and extraction;
-- automatic extracted-connectivity checks;
+- exact extracted-connectivity assertions;
 - Netgen LVS runner infrastructure.
 
-Not yet demonstrated or implemented:
+Implemented but awaiting `/foss` validation on PR #3:
 
-- a passing independent schematic Netgen LVS comparison;
-- via planning and execution;
+- modular strategy dispatch;
+- rejection reports;
+- same-layer non-inline L/Z Manhattan routing.
+
+Not yet implemented or demonstrated:
+
+- independent schematic Netgen LVS pass;
+- committed routes as obstacles/resources;
 - PDK-resolved width classes and layer policies;
-- general non-inline Manhattan access planning;
+- via planning and execution;
 - multi-terminal topology planning;
 - matched, differential, symmetry, shielding, and separation group planning;
-- route-to-route obstacle and congestion handling;
+- congestion-aware graph search and rip-up/reroute;
 - stable logical instance identity through extraction.
