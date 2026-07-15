@@ -1,146 +1,81 @@
 # MatchMaker Engineering Map
 
-This is the first document to read before changing the engine. It is maintained for human contributors and coding agents that need to recover the architecture, current validation boundary, package ownership, and next development step without reconstructing them from examples or commit history.
+This is the canonical live-state document for MatchMaker. Read it before changing the engine. It is optimized for a future coding agent or contributor who must recover the architecture, active APIs, validation boundary, known debt, and next step without reconstructing context from chat or commit history.
 
 ## Read order
 
 ```text
-1. docs/ENGINEERING_MAP.md
-2. docs/adr/0001-constraint-driven-hybrid-routing.md
-3. docs/adr/0002-modular-routing-strategy-dispatch.md
-4. docs/VALIDATION_STATUS.md
-5. the module being changed
-6. its tests
+1. docs/ENGINEERING_MAP.md              current architecture and development state
+2. docs/VALIDATION_STATUS.md            physical evidence demonstrated in /foss
+3. docs/adr/*.md                         durable decisions and rejected alternatives
+4. the module being changed
+5. its tests
 ```
 
-`VALIDATION_STATUS.md` is the source of truth for results demonstrated in the Chipathon `/foss` environment. Unit tests and plausible geometry are not physical integration validation.
+Do not create another handoff or architecture summary. Update this file instead. `VALIDATION_STATUS.md` is the only place for detailed observed run output. ADRs are append-only decision records, not status documents.
 
 ## Mission
 
-MatchMaker is a deterministic, constraint-driven analog layout synthesis engine targeting GF180 through gLayout. It must translate structured circuit and layout intent into geometry while preserving connectivity, matching intent, symmetry, electrical constraints, and verification evidence.
+MatchMaker is a deterministic, constraint-driven analog layout synthesis engine for GF180 through gLayout. It must preserve electrical connectivity, analog matching intent, geometric constraints, and verification evidence while supporting reusable MOS arrays, switches, capacitors, CDACs, comparators, and larger analog cells.
 
-Long-term targets include matched MOS structures, switch networks, capacitor arrays, CDACs, comparators, and larger analog cells.
+## Repository state at this document revision
+
+```text
+base branch: main
+active branch: feature/manhattan-routing-dispatcher
+active PR: #3
+PR #1: routing and verification foundation, merged
+PR #2: logical net intent, access selection, and RoutePlan IR, merged
+PR #3: modular strategy dispatch and non-inline Manhattan routing, ready for review
+```
+
+PR #3 has passed GitHub Actions, Python compilation, the original blocked A0-to-A1 dogleg regression, and the diagonal A0-to-A2 Manhattan regression in `/foss`.
 
 ## Golden pipeline
 
 ```text
 high-level circuit/layout intent
--> typed device, placement, net, and route-group intent
+-> typed device and placement intent
 -> deterministic placement plan
+-> placed GF180 geometry
 -> PhysicalDesignSnapshot
+-> NetIntent / RouteGroupIntent
 -> routing strategy dispatch
 -> RouteCandidate selection
 -> RoutePlan
 -> mechanical geometry execution
 -> GDS
--> DRC
--> extraction and connectivity audit
--> LVS
+-> Magic DRC
+-> Magic extraction and connectivity assertion
+-> Netgen LVS
 -> targeted repair or accepted cell
 ```
 
-Each major module owns one translation. Planning must not be hidden in examples, geometry executors, or verification adapters.
-
-## Stable validated flow on main
-
-The merged flow has demonstrated:
-
-```text
-MOS centroid intent
--> deterministic GF180 placement
--> filtered PhysicalDesignSnapshot
--> logical NetIntent(A0.gate, A1.gate)
--> automatic access selection
--> external same-layer dogleg
--> RoutePlan and metrics
--> GDS
--> Magic DRC: zero violations
--> Magic extraction
--> exact connectivity: two intended A devices only
-```
-
-The logical routing demo automatically recovered `A0__gate_W` and `A1__gate_E`, reduced promoted access points from 21,520 hierarchy ports to 128 canonical MOS accesses, and passed DRC, extraction, and connectivity gating.
-
-## Current development slice
-
-Branch: `feature/manhattan-routing-dispatcher`
-
-The branch separates strategy generation from dispatch and adds general same-layer non-inline Manhattan routing:
-
-```text
-NetIntent + PhysicalDesignSnapshot
--> enumerate terminal access pairs
--> straight strategy
--> L/Z Manhattan strategy
--> external dogleg strategy
--> typed candidate rejections
--> common hard-limit filtering
--> deterministic ranking
--> RoutePlan
-```
-
-Current pure tests and Python compilation pass. `/foss` validation is still required for both the default dogleg regression and a diagonal `A0.gate` to `A2.gate` Manhattan route.
+Each major module owns one translation. No example, executor, or verification adapter may silently become a planner.
 
 ## Core routing principle
 
-Routing is constrained physical synthesis, not a call between two named primitive ports.
-
-Canonical input:
+Routing begins with logical connectivity, not fixed primitive ports.
 
 ```text
-logical net or route group
-+ logical terminals
-+ typed hard constraints
-+ typed soft-cost weights
-+ physical access choices
-+ placed obstacles and keepouts
-+ routing-layer resources
-+ committed routes
+NetIntent(A0.gate, A1.gate)
++ NetConstraintProfile
++ PhysicalDesignSnapshot
+-> enumerate legal physical access points
+-> generate candidates with independent strategies
+-> reject hard-constraint violations
+-> rank feasible candidates deterministically
+-> compile the selected candidate into RoutePlan
+-> execute resolved geometry
 ```
 
-Canonical output:
-
-```text
-RoutePlan
-+ selected access points
-+ strategy/topology
-+ exact Manhattan segments and vias
-+ resolved width and layers
-+ metrics
-+ constraint evidence
-+ blockers
-+ provenance
-```
-
-Geometry is generated only after the plan is complete.
-
-## Logical terminal versus physical access
-
-Logical terminal:
-
-```text
-A0.gate
-CAP3.top
-SW1.output
-```
-
-Physical access:
-
-```text
-A0__gate_E
-A0__gate_W
-CAP3__top_N
-```
-
-`PhysicalDesignSnapshot.access_points_for(TerminalRef(...))` is the canonical bridge from electrical identity to physical choices.
-
-Device-specific adapters own this translation. The MOS adapter recognizes canonical gate/source/drain/bulk ports and filters nested gLayout hierarchy ports. Future capacitor, resistor, switch, and comparator adapters should expose their own logical terminals and legal physical accesses without changing the generic routing contracts.
+A logical terminal such as `A0.gate` may expose several physical access points such as `A0__gate_E` and `A0__gate_W`. High-level callers must not select those physical accesses before placement context is evaluated.
 
 ## Canonical data contracts
 
-### Intent
+### Logical intent
 
-`routing/intents/net_intent.py`
+File: `src/matchmaker/routing/intents/net_intent.py`
 
 ```text
 NetIntent
@@ -149,20 +84,20 @@ RouteGroupIntent
 RouteGroupConstraintProfile
 ```
 
-`NetConstraintProfile` currently carries:
+`NetIntent` names logical `TerminalRef` objects only. `NetConstraintProfile` currently carries semantic width class, optional explicit width, obstacle clearance, layer restrictions, maximum length/bends, cost weights, and priority.
 
-- width class and optional explicit width;
-- obstacle avoidance and clearance;
-- allowed and forbidden layers;
-- maximum length and bend count;
-- length, bend, and via cost weights;
-- priority.
-
-Route-group fields reserve typed requirements for separation, matching, symmetry, equal bend/via count, and shielding. Group planning is not implemented yet.
+Route-group types reserve matching, symmetry, shielding, separation, and equal bend/via requirements. Group planning is not implemented yet.
 
 ### Physical state
 
-`physical/models.py`
+Files:
+
+```text
+src/matchmaker/physical/models.py
+src/matchmaker/physical/mos_centroid_snapshot.py
+```
+
+Canonical models:
 
 ```text
 TerminalRef
@@ -172,11 +107,20 @@ RoutingObstacle
 PhysicalDesignSnapshot
 ```
 
-Snapshot mappings are read-only. Routing code must not rediscover physical identity from reference order or store planning state in `Component.info`.
+`PhysicalDesignSnapshot.access_points_for(TerminalRef(...))` is the supported bridge from electrical identity to physical choices. Routing code must not infer identity from reference order or store planning policy in `Component.info`.
+
+The MOS adapter filters nested gLayout hierarchy ports and retains canonical external gate/source/drain/bulk cardinal accesses. The validated eight-instance centroid exposes 128 routing access points instead of 21,520 unfiltered hierarchy ports.
 
 ### Candidate and dispatch evidence
 
-`routing/planners/route_candidate.py`
+Files:
+
+```text
+src/matchmaker/routing/planners/route_candidate.py
+src/matchmaker/routing/planners/two_terminal_strategy_dispatcher.py
+```
+
+Canonical models:
 
 ```text
 RouteCandidate
@@ -185,19 +129,11 @@ StrategyDispatchResult
 RoutePlanningError
 ```
 
-A candidate contains selected accesses, exact path points, resolved width, strategy, length, bends, cost, blockers, channel data, and provenance.
-
-A dispatch result retains:
-
-```text
-selected candidate
-all feasible candidates
-all rejected candidates with reasons
-```
+A candidate records selected access points, exact path points, layer, width, strategy, length, bend count, cost, blockers, channel information, and provenance. A dispatch result retains the selected candidate, every feasible candidate, and every rejection reason.
 
 ### Route-plan IR
 
-`routing/plans/route_plan.py`
+File: `src/matchmaker/routing/plans/route_plan.py`
 
 ```text
 RoutePlan
@@ -209,117 +145,82 @@ ConstraintCheck
 
 A valid plan contains only nonzero Manhattan segments, internally consistent metrics, and no failed hard constraint.
 
-## Modular routing strategies
+### Execution
 
-See ADR 0002.
+File: `src/matchmaker/routing/routers/route_plan_executor.py`
 
-Current pure strategies:
+The executor draws an already resolved `RoutePlan`. It does not choose terminals, access points, topology, strategy, channel, width, or layer. Via execution is not implemented and must fail explicitly.
+
+## Current strategy architecture
+
+Directory: `src/matchmaker/routing/planners/`
 
 ```text
 straight_route_strategy.py
-  clear outward-compatible inline connection
+  clear same-layer aligned route
 
 manhattan_route_strategy.py
-  perpendicular-access L paths
-  parallel-access Z paths
+  non-inline L routes for perpendicular accesses
+  non-inline Z routes for parallel accesses
   midpoint, obstacle-edge, and outer channel candidates
 
 dogleg_route_strategy.py
-  aligned external spatial channel around a blocked row/column
+  aligned external channel around a blocked row or column
+
+rectilinear_path.py
+  shared Manhattan geometry, orientation, and obstacle utilities
+
+two_terminal_strategy_dispatcher.py
+  access-pair enumeration
+  common layer eligibility
+  strategy invocation
+  hard-limit filtering
+  candidate deduplication
+  deterministic ranking
+  structured rejection evidence
+
+two_terminal_net_planner.py
+  selected RouteCandidate -> RoutePlan
 ```
 
-`two_terminal_strategy_dispatcher.py` owns common access enumeration, layer compatibility, hard-limit filtering, deduplication, deterministic ranking, and rejection summaries.
+Strategy registration is static. Do not add dynamic plugin discovery until several stable strategy families exist and registration itself becomes a demonstrated problem.
 
-`two_terminal_net_planner.py` compiles the selected candidate into `RoutePlan` and retains strategy evidence through `plan_two_terminal_net_with_report(...)`.
+## Device-specific extension model
 
-## Strategy/plugin model
-
-Do not build one universal analog router prematurely.
-
-There are three extension categories:
+A single universal analog router is not the target. MatchMaker uses common contracts with device adapters and specialized strategy/topology modules.
 
 ### Physical adapters
 
+Adapters translate placed device structure into logical terminals, physical access choices, obstacles, and local keepouts.
+
 ```text
-MOS adapter
-capacitor adapter
-resistor adapter
-transmission-gate adapter
-comparator adapter
+MOS adapter -> gate/source/drain/bulk
+capacitor adapter -> top/bottom plate
+resistor adapter -> terminal accesses
+transmission-gate adapter -> input/output/control
+comparator adapter -> input/output/clock/supply
 ```
 
-They expose logical terminals, physical accesses, obstacles, and local keepouts.
+Device construction details must not leak into the generic dispatcher.
 
-### Routing strategies
+### Routing strategies and topology modules
+
+Planned examples:
 
 ```text
-StraightRouteStrategy
-ManhattanRouteStrategy
-SpatialDoglegStrategy
 RectilinearGraphStrategy
 DifferentialPairStrategy
+MatchedRouteGroupStrategy
 MatchedBusStrategy
 ShieldedNetStrategy
 CdacRoutingTemplateStrategy
 ```
 
-They consume common intent and snapshot contracts and emit common route candidates/plans.
+They must consume common intent/snapshot contracts and emit common candidate/plan types. Specialized analog topology is allowed; specialized execution paths are not.
 
 ### PDK rule adapters
 
-They will resolve semantic intent such as `signal`, `high_current`, or `high_voltage` into GF180-specific widths, layers, spacing, vias, arrays, and enclosures.
-
-Strategy registration is currently static. Dynamic plugin discovery is unnecessary until several stable strategy families exist.
-
-## Hard constraints and soft costs
-
-Hard constraints reject candidates:
-
-- intended connectivity;
-- no unrelated terminals;
-- allowed/forbidden layers;
-- obstacle and keepout avoidance;
-- maximum length, bends, vias, or resistance;
-- width, spacing, enclosure, and via legality;
-- mandatory symmetry, matching, shielding, or separation.
-
-Soft costs rank valid candidates:
-
-- length;
-- bends and vias;
-- estimated resistance/capacitance;
-- congestion;
-- coupling exposure;
-- matched-length error;
-- symmetry deviation;
-- scarce resource use.
-
-Hard checks always precede ranking.
-
-## Execution boundary
-
-`routing/routers/route_plan_executor.py`
-
-The executor draws resolved `RouteSegment` geometry. It does not choose terminals, access points, topology, strategy, channel, width, or layer. Via execution remains unimplemented and fails explicitly.
-
-## Verification boundary
-
-```text
-DRC pass != connectivity pass
-```
-
-Every routing integration test that changes connectivity must include extraction or LVS evidence.
-
-Current verification:
-
-```text
-Magic DRC
--> Magic SPICE extraction
--> exact shared-net participant assertion
--> Netgen LVS infrastructure
-```
-
-The current connectivity assertion infers participants through extracted subcircuit names. Stable logical instance identity through extraction remains future work.
+Semantic intent such as `signal`, `high_current`, or `high_voltage` must eventually resolve through a GF180 routing-rule adapter into concrete layers, widths, spacing, via types, via arrays, and enclosures. Generic intent and strategy code must not hard-code PDK rule numbers.
 
 ## Package ownership
 
@@ -334,7 +235,7 @@ placement/mos/
   MOS intent compilation, dummy policy, binding, and placement
 
 physical/
-  placed instances, terminals, accesses, obstacles, and snapshots
+  placed instances, logical terminals, physical accesses, obstacles, snapshots
 
 primitives/
   PDK/gLayout primitive construction
@@ -343,88 +244,116 @@ routing/intents/
   logical net and route-group requests
 
 routing/planners/
-  pure strategy modules, dispatch, obstacle checks, and plan compilation
+  pure strategies, dispatch, obstacle checks, candidate/plan compilation
 
 routing/plans/
-  common execution-ready IR and metrics
+  common execution-ready route IR and metrics
 
 routing/routers/
   mechanical geometry execution
 
 verification/
-  DRC, extraction, connectivity assertions, LVS, and report parsing
+  DRC, extraction, connectivity assertions, LVS, report parsing
 
 outputs/
-  generated artifact paths
+  generated-cell paths and artifact conventions
 
 examples/
-  integration wiring only; no reusable routing policy
+  package wiring only; no reusable engine policy
 ```
 
-## Dependency rules
+## Architectural invariants
 
-1. Intent and constraint models do not import gLayout, gdsfactory, Magic, or Netgen.
-2. Pure planners do not mutate components.
-3. Device adapters expose physical choices but do not choose global routes.
-4. PDK rule resolution belongs downstream of semantic intent.
-5. Executors do not invent access or topology policy.
-6. Verification adapters own external-tool invocation and parsing.
-7. Examples contain no reusable engine logic.
-8. New strategies require pure tests and `/foss` integration validation.
-9. DRC success is never reported as electrical success.
-10. Major architecture decisions require an ADR.
+1. Logical terminals are separate from physical access points.
+2. Hard constraints reject candidates before soft-cost ranking.
+3. Pure planners do not mutate gdsfactory or gLayout components.
+4. Executors do not invent routing policy.
+5. Examples contain no reusable engine logic.
+6. New routing work consumes `PhysicalDesignSnapshot`.
+7. New strategies emit common `RouteCandidate` and `RoutePlan` types.
+8. Candidates and plans retain metrics, blockers, constraint evidence, and provenance.
+9. Unsupported cases fail explicitly rather than drawing unsafe fallback geometry.
+10. DRC success never proves electrical correctness.
+11. Every connectivity-changing integration test requires extraction or LVS evidence.
+12. PDK rule numbers belong in PDK adapters or detailed physical planning.
+13. Major architecture changes require an ADR.
+14. Live architecture/status belongs here; observed physical evidence belongs in `VALIDATION_STATUS.md`.
 
-## Known debt
+## Physically validated regressions
 
-Do not copy these limitations into new subsystems:
+Detailed commands and observed output are in `VALIDATION_STATUS.md`.
 
-- placement returns only a component rather than typed `PlacementResult` bindings;
-- MOS snapshot construction still binds tiles to references by order;
-- logical planning is two-terminal and same-layer only;
-- via planning and execution are absent;
-- width classes and layer policies are not PDK-resolved;
-- committed routes are not yet obstacles/resources;
-- no multi-terminal topology planner exists;
-- route-group constraints are typed but not enforced;
-- extraction lacks stable logical instance identity.
-
-## Development order
-
-Current branch acceptance:
+### Blocked A0-to-A1 dogleg
 
 ```text
-1. default A0-A1 dogleg regression remains DRC/extraction/connectivity clean
-2. diagonal A0-A2 route selects Manhattan strategy
-3. diagonal route passes DRC and extraction
-4. extracted diagonal net contains exactly A0 and A2
+logical terminals: A0.gate, A1.gate
+selected access: A0__gate_W, A1__gate_E
+blockers: B0, B1
+strategy: dogleg
+GF180 Magic DRC: zero violations
+Magic extraction: passed
+connectivity: exactly A0 and A1
+pre-LVS gate: passed
 ```
 
-After merge:
+Failure history to preserve: the original direct route and layer-only C route were DRC-clean but electrically connected B0 and B1. This is why extraction/connectivity gating is mandatory.
+
+### Diagonal A0-to-A2 Manhattan route
 
 ```text
-1. committed-route resources and route-to-route obstacles
-2. PDK width/layer/via rule resolution
-3. PDK-aware via planning and execution
-4. multi-terminal topology planning
-5. matched and differential route-group strategies
-6. coarse rectilinear graph search and congestion
-7. independent schematic LVS
-8. verification-driven repair
-9. capacitor-array and CDAC templates
+logical terminals: A0.gate, A2.gate
+selected access: A0__gate_E, A2__gate_W
+strategy: two-bend Manhattan Z route
+length: 44.8
+width: 0.5
+feasible candidates: 4
+rejected candidates: 110
+GF180 Magic DRC: zero violations
+Magic extraction: passed
+connectivity: exactly A0 and A2
+pre-LVS gate: passed
 ```
 
-Do not jump directly to multi-net maze routing before committed-route resources and PDK rule resolution exist.
+## Known implementation debt
 
-## Change checklist
+- Placement returns a component rather than a typed `PlacementResult`.
+- Snapshot construction still relies partly on placement/reference binding assumptions.
+- Routing is two-terminal and same-layer only.
+- Committed routes are not represented as obstacles or routing resources.
+- Width classes and layer policies are not resolved through a GF180 rule adapter.
+- Via planning and execution are not implemented.
+- Multi-terminal topology planning is not implemented.
+- Matching, differential symmetry, shielding, and separation are typed but not planned.
+- Congestion-aware graph search and rip-up/reroute are not implemented.
+- Independent schematic-to-layout Netgen LVS has not passed.
+- Extracted instance identity is inferred from generated subcircuit names rather than stable logical IDs.
 
-Before committing engine work, verify:
+## Next development order
+
+Do not jump directly to multi-net A* routing.
+
+```text
+1. squash-merge PR #3
+2. represent committed routes as typed obstacles/resources in PhysicalDesignSnapshot
+3. add GF180 routing-rule resolution for width, layer, spacing, and via selection
+4. add PDK-aware via planning and execution
+5. add multi-terminal topology planning
+6. add matched/differential route-group planners
+7. add coarse rectilinear graph search and congestion accounting
+8. add an independent schematic LVS regression
+9. add capacitor/CDAC physical adapters and routing templates
+```
+
+## Required change discipline
+
+Before merging engine work, answer:
 
 - Which pipeline translation does this module own?
-- Is the input typed and independent of execution tools?
-- Is device-specific knowledge in an adapter or strategy rather than generic execution?
-- Is policy inside a planner rather than an example?
-- Are hard constraints separate from soft costs?
-- Does the plan retain geometry, metrics, blockers, rejections, and provenance?
-- Does the integration test prove connectivity?
-- Has `VALIDATION_STATUS.md` been updated without overstating `/foss` evidence?
-- Does the change require an ADR?
+- Is its input typed and independent of execution tools?
+- Is reusable policy in a planner rather than an executor or example?
+- Are hard constraints distinct from soft costs?
+- Does the output retain evidence and provenance?
+- Are unsupported cases explicit?
+- Do unit tests cover pure behavior?
+- Does `/foss` integration prove DRC and extracted connectivity?
+- Have this map, `VALIDATION_STATUS.md`, and any relevant ADR been updated without duplicating status or overstating validation?
