@@ -37,6 +37,32 @@ GitHub Actions unit tests and Python compilation pass for the implementation bra
 
 ## `/foss` validation status for PR #3
 
+Both required physical regressions passed on the branch.
+
+### Confirmed: existing blocked dogleg regression
+
+Command:
+
+```bash
+python scripts/matchmaker/examples/routing/route_two_centroid_gates.py
+```
+
+Confirmed invariants:
+
+```text
+logical terminals: A0.gate, A1.gate
+route strategy: dogleg
+actual source access: A0__gate_W
+actual target access: A1__gate_E
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: True
+pre-LVS checks passed: True
+```
+
+The modular dispatcher preserved the previously validated obstacle-aware dogleg and exact A0/A1 connectivity.
+
 ### Confirmed: diagonal Manhattan regression
 
 Command:
@@ -74,30 +100,6 @@ pre-LVS checks passed: True
 
 Extraction identified exactly the intended A0 and A2 device instances on the routed net. The generated GDS displayed the expected non-inline same-layer Z geometry.
 
-### Still required: existing dogleg regression on this branch
-
-Run:
-
-```bash
-python scripts/matchmaker/examples/routing/route_two_centroid_gates.py
-```
-
-Required result:
-
-```text
-logical terminals: A0.gate, A1.gate
-route strategy: dogleg
-actual source access: A0__gate_W
-actual target access: A1__gate_E
-DRC passed: True
-DRC violations: 0
-extraction passed: True
-connectivity passed: True
-pre-LVS checks passed: True
-```
-
-PR #3 remains draft until this regression confirms that modular dispatch did not break the previously validated dogleg path.
-
 ## Current implementation boundary
 
 Implemented and physically validated on `main`:
@@ -114,11 +116,12 @@ Implemented and physically validated on `main`:
 - exact extracted-connectivity assertions;
 - Netgen LVS runner infrastructure.
 
-Implemented on PR #3, with diagonal Manhattan integration validated:
+Implemented and physically validated on PR #3:
 
 - modular strategy dispatch;
-- rejection reports;
-- same-layer non-inline L/Z Manhattan routing.
+- structured candidate and rejection reports;
+- same-layer non-inline L/Z Manhattan routing;
+- preservation of the existing blocked dogleg regression.
 
 Not yet implemented or demonstrated:
 
