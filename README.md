@@ -1,30 +1,26 @@
 # MatchMaker
 
-MatchMaker is a deterministic, constraint-driven analog layout automation project for the SSCS Chipathon Track D analog/LLM flow. It targets GF180 through gLayout and is being developed toward reusable matched MOS structures, switch networks, capacitor arrays, CDACs, and larger verified analog cells.
+MatchMaker is a deterministic, constraint-driven analog layout synthesis project for the SSCS Chipathon Track D analog/LLM flow. It targets GF180 through gLayout and is being developed toward reusable matched MOS structures, switch networks, capacitor arrays, CDACs, comparators, and larger verified analog cells.
 
-## Current development flow
+## Current validated flow
 
 ```text
-structured placement intent
-→ deterministic placement plan
-→ GF180 primitive placement
-→ typed PhysicalDesignSnapshot
-→ logical NetIntent and typed constraints
-→ automatic physical access selection
-→ execution-ready RoutePlan
-→ mechanical route geometry execution
-→ GDS
-→ Magic DRC
-→ Magic SPICE extraction
-→ automatic connectivity assertion
-→ Netgen LVS infrastructure
+structured device and placement intent
+-> deterministic GF180 placement
+-> PhysicalDesignSnapshot
+-> logical NetIntent and typed constraints
+-> modular routing-strategy dispatch
+-> selected RouteCandidate
+-> execution-ready RoutePlan
+-> mechanical route geometry
+-> GDS
+-> Magic DRC
+-> Magic SPICE extraction
+-> exact connectivity assertion
+-> Netgen LVS infrastructure
 ```
 
-The merged foundation demonstrated an obstacle-aware MOS-centroid gate route that passes GF180 DRC and extraction and connects exactly the two intended devices.
-
-The current development branch migrates that regression from fixed physical ports to logical terminals. The example requests `A0.gate` to `A1.gate`; the planner must choose the outward physical access pair and external dogleg automatically.
-
-Pure tests and compilation pass. The logical-intent migration still requires a fresh Chipathon `/foss` integration run before it is treated as physically validated.
+The current two-terminal, same-layer router supports clear straight routes, non-inline Manhattan L/Z routes, and external obstacle-avoiding doglegs. Both the blocked A0-to-A1 dogleg and diagonal A0-to-A2 Manhattan regressions pass GF180 DRC, extraction, and exact connectivity checks.
 
 ## Start here
 
@@ -32,182 +28,94 @@ Before changing the engine, read:
 
 ```text
 designs/scripts/matchmaker/docs/ENGINEERING_MAP.md
-designs/scripts/matchmaker/docs/adr/0001-constraint-driven-hybrid-routing.md
 designs/scripts/matchmaker/docs/VALIDATION_STATUS.md
+designs/scripts/matchmaker/docs/adr/
 ```
 
-The engineering map defines the current contracts, package ownership, dependency rules, known debt, and development order. Validation status distinguishes pure-test coverage from results demonstrated in the physical tool environment.
+`ENGINEERING_MAP.md` is the canonical live-state document. `VALIDATION_STATUS.md` records only physical results demonstrated in the Chipathon `/foss` environment. ADRs preserve durable architectural decisions.
 
-## Working principle
-
-MatchMaker separates logical connectivity from physical access.
-
-```text
-NetIntent(A0.gate, A1.gate)
-+ NetConstraintProfile
-+ PhysicalDesignSnapshot
-→ enumerate physical access candidates
-→ reject hard-constraint violations
-→ rank feasible candidates deterministically
-→ RoutePlan
-→ geometry executor
-```
-
-A logical terminal may expose several physical access points. High-level callers should not select `gate_E`, `gate_W`, or another concrete port before placement context is evaluated.
-
-The routing architecture is hybrid:
-
-```text
-straight route
-→ simple Manhattan family
-→ explicit spatial dogleg/channel
-→ coarse routing-graph search
-→ multi-terminal topology routing
-→ matched and differential templates
-→ negotiated multi-net routing
-```
-
-All strategies will share common intent, physical-state, route-plan, metrics, execution, and verification contracts.
-
-## Run the routing regression
+## Run the regressions
 
 Inside the Chipathon container:
 
 ```bash
 cd /foss/designs
 source scripts/matchmaker/env/setup.sh
-python scripts/matchmaker/examples/routing/route_two_centroid_gates.py
-```
-
-The command generates GDS, runs DRC, extracts SPICE, and exits nonzero unless the route net has exactly the expected two participants.
-
-Expected logical-routing output includes:
-
-```text
-logical terminals: A0.gate, A1.gate
-route strategy: dogleg
-actual source access: A0__gate_W
-actual target access: A1__gate_E
-DRC passed: True
-extraction passed: True
-connectivity passed: True
-pre-LVS checks passed: True
-```
-
-Run pure tests with:
-
-```bash
 python -m unittest discover -s scripts/matchmaker/tests -v
 ```
 
-Inspect an extracted netlist manually with:
+Blocked dogleg regression:
 
 ```bash
-python scripts/matchmaker/examples/verification/inspect_extracted_netlist.py nfet_centroid_gate_route_demo
+python scripts/matchmaker/examples/routing/route_two_centroid_gates.py
 ```
 
-## Repository structure
+Diagonal Manhattan regression:
+
+```bash
+python scripts/matchmaker/examples/routing/route_two_centroid_gates.py \
+  --cell-name nfet_centroid_diagonal_gate_route_demo \
+  --source-instance A0 \
+  --target-instance A2
+```
+
+Each routing command generates GDS, runs DRC, extracts SPICE, and exits nonzero unless the routed net contains exactly the expected endpoint instances.
+
+## Repository layout
 
 ```text
 designs/
   libs/core_analog/<generated_cell>/
     gds/
     netlist/
-    reports/
-      drc/
-      extraction/
-      connectivity/
-      lvs/
+    reports/{drc,extraction,connectivity,lvs}/
 
   scripts/matchmaker/
+    docs/
     env/
     examples/
-      placement/
-      routing/
-      verification/
-    docs/
-      ENGINEERING_MAP.md
-      VALIDATION_STATUS.md
-      placement_engine.md
-      adr/
     src/matchmaker/
-      specs/
-      placement/
+      outputs/
       physical/
+      placement/
       primitives/
       routing/
-        intents/
-        plans/
-        planners/
-        routers/
+      specs/
       verification/
-      outputs/
     tests/
 ```
 
-The Python package lives under `designs/scripts/matchmaker/src/matchmaker/`. Generated circuit artifacts live under `designs/libs/core_analog/`.
+The Python package lives under `designs/scripts/matchmaker/src/matchmaker/`. Generated cell artifacts live under `designs/libs/core_analog/`.
 
-## Package ownership
+## Working principle
 
-`specs/` contains PDK-independent device specifications.
+Logical connectivity is separate from physical access. Callers request terminals such as `A0.gate`; the router evaluates available physical accesses, obstacles, constraints, and strategy candidates before producing geometry.
 
-`placement/core/` contains reusable tile, plan, orientation, and spacing infrastructure.
+MatchMaker uses common intent, snapshot, candidate, plan, execution, and verification contracts with specialized physical adapters and routing strategies. Device-specific knowledge belongs in adapters. Analog-specific topology belongs in strategy modules. Executors only draw resolved plans.
 
-`placement/mos/` contains MOS-specific intent compilation, dummy handling, device binding, and placement construction.
+## Current boundary
 
-`physical/` contains placed-instance, logical-terminal, physical-access, obstacle, and physical-design snapshot models.
+Implemented and physically validated:
 
-`primitives/` contains PDK/gLayout primitive factories.
+- deterministic MOS centroid placement;
+- filtered typed physical-design snapshots;
+- logical two-terminal net intent and typed constraints;
+- deterministic strategy dispatch with rejection evidence;
+- same-layer straight, Manhattan L/Z, and external-dogleg routing;
+- route metrics and provenance;
+- GF180 Magic DRC and extraction;
+- exact extracted-connectivity assertions.
 
-`routing/intents/` contains logical net and route-group requests. The previous fixed-access point-to-point intent remains transitional compatibility code.
+Not yet implemented or demonstrated:
 
-`routing/plans/` contains the common execution-ready route-plan and metrics intermediate representation.
-
-`routing/planners/` contains pure access selection, obstacle checking, and route-plan compilation.
-
-`routing/routers/` contains mechanical geometry execution adapters.
-
-`verification/` contains Magic DRC, Magic extraction, Netgen LVS, process execution, SPICE inspection, and extracted-connectivity assertions.
-
-`outputs/` owns generated artifact paths. `examples/` contains package wiring only.
-
-## Architectural rules
-
-- Keep intent and pure planners independent of gLayout, Magic, and Netgen.
-- Do not add routing policy to placement builders, executors, or examples.
-- Separate logical terminals from physical access points.
-- Route planning consumes explicit `PhysicalDesignSnapshot` state.
-- Filter candidates by hard constraints before ranking soft costs.
-- Executors draw resolved plans and do not select access or topology.
-- DRC success is not connectivity success; extraction or LVS must verify electrical intent.
-- Record durable architecture decisions in `docs/adr/`.
-- Update `VALIDATION_STATUS.md` without overstating `/foss` validation.
-
-## Near-term roadmap
-
-Completed in the current development branch:
-
-```text
-✓ logical NetIntent
-✓ typed net and route-group constraints
-✓ automatic two-terminal access selection
-✓ common RoutePlan and routing metrics
-✓ mechanical route-plan executor
-✓ logical-terminal migration of the centroid regression
-```
-
-Next after physical validation:
-
-```text
-1. strategy dispatcher and structured candidate rejection reports
-2. committed-route resources and route-to-route obstacles
-3. multi-terminal topology planning
-4. PDK width/layer/via rule resolution
-5. matched and differential route groups
-6. congestion-aware multi-net routing
-7. independent schematic LVS and repair feedback
-8. capacitor-array and CDAC routing templates
-```
+- committed routes as obstacles/resources;
+- GF180 width/layer/via rule resolution;
+- via planning and execution;
+- multi-terminal topology planning;
+- matched, differential, shielding, and separation group planning;
+- congestion-aware graph routing;
+- a passing independent schematic-to-layout LVS regression;
+- capacitor/CDAC physical adapters and routing templates.
 
 ## Team
 
