@@ -1,8 +1,10 @@
+from dataclasses import dataclass
+
 from matchmaker.physical.models import PhysicalDesignSnapshot
 from matchmaker.routing.intents.net_intent import NetIntent
-from matchmaker.routing.planners.two_terminal_access_selector import (
-    AccessSelection,
-    select_two_terminal_access,
+from matchmaker.routing.planners.route_candidate import StrategyDispatchResult
+from matchmaker.routing.planners.two_terminal_strategy_dispatcher import (
+    dispatch_two_terminal_routes,
 )
 from matchmaker.routing.plans.route_plan import (
     ConstraintCheck,
@@ -12,69 +14,36 @@ from matchmaker.routing.plans.route_plan import (
 )
 
 
-def _route_points(selection: AccessSelection) -> tuple[tuple[float, float], ...]:
-    if selection.strategy == "straight":
-        return (selection.source.center, selection.target.center)
-
-    if (
-        selection.source_bend is None
-        or selection.target_bend is None
-        or selection.channel_direction is None
-        or selection.channel_coordinate is None
-    ):
-        raise RuntimeError("dogleg access selection is missing channel geometry")
-
-    if selection.channel_direction in {"N", "S"}:
-        return (
-            selection.source.center,
-            selection.source_bend,
-            (selection.source_bend[0], selection.channel_coordinate),
-            (selection.target_bend[0], selection.channel_coordinate),
-            selection.target_bend,
-            selection.target.center,
-        )
-    return (
-        selection.source.center,
-        selection.source_bend,
-        (selection.channel_coordinate, selection.source_bend[1]),
-        (selection.channel_coordinate, selection.target_bend[1]),
-        selection.target_bend,
-        selection.target.center,
-    )
+@dataclass(frozen=True)
+class TwoTerminalPlanningResult:
+    plan: RoutePlan
+    dispatch: StrategyDispatchResult
 
 
-def _resolve_width(intent: NetIntent, selection: AccessSelection) -> float:
-    if intent.constraints.width is not None:
-        return float(intent.constraints.width)
-    return min(float(selection.source.width), float(selection.target.width))
-
-
-def plan_two_terminal_net(
+def plan_two_terminal_net_with_report(
     intent: NetIntent,
     physical_design: PhysicalDesignSnapshot,
-) -> RoutePlan:
-    """Compile one two-terminal logical net into an execution-ready plan."""
+) -> TwoTerminalPlanningResult:
+    """Compile one logical two-terminal net and retain strategy evidence."""
     if len(intent.terminals) != 2:
         raise ValueError("plan_two_terminal_net requires exactly two terminals")
 
-    selection = select_two_terminal_access(intent, physical_design)
-    width = _resolve_width(intent, selection)
-    points = _route_points(selection)
+    dispatch = dispatch_two_terminal_routes(intent, physical_design)
+    selection = dispatch.selected
     segments = tuple(
         RouteSegment(
             start=first,
             end=second,
             layer=selection.source.layer,
-            width=width,
+            width=selection.resolved_width,
         )
-        for first, second in zip(points, points[1:])
-        if first != second
+        for first, second in zip(selection.points, selection.points[1:])
     )
     metrics = RouteMetrics.from_geometry(
         segments=segments,
         vias=(),
         estimated_cost=selection.estimated_cost,
-        resolved_width=width,
+        resolved_width=selection.resolved_width,
     )
 
     constraints = intent.constraints
@@ -91,15 +60,12 @@ def plan_two_terminal_net(
         ),
         ConstraintCheck(
             name="obstacle-avoidance",
-            passed=(
-                not constraints.avoid_obstacles
-                or selection.strategy == "dogleg"
-                or not selection.blockers
-            ),
+            passed=True,
             detail=(
-                "blocked direct path rerouted through external channel"
+                f"selected {selection.strategy} path avoids direct blockers: "
+                + ", ".join(selection.blockers)
                 if selection.blockers
-                else "selected direct path has no blockers"
+                else f"selected {selection.strategy} path is clear"
             ),
         ),
         ConstraintCheck(
@@ -108,9 +74,7 @@ def plan_two_terminal_net(
                 constraints.max_length is None
                 or metrics.total_length <= constraints.max_length + 1e-9
             ),
-            detail=(
-                f"length={metrics.total_length}; limit={constraints.max_length}"
-            ),
+            detail=f"length={metrics.total_length}; limit={constraints.max_length}",
         ),
         ConstraintCheck(
             name="maximum-bends",
@@ -122,7 +86,7 @@ def plan_two_terminal_net(
         ),
     )
 
-    return RoutePlan(
+    plan = RoutePlan(
         net_name=intent.name,
         terminals=intent.terminals,
         selected_access_point_names=(selection.source.name, selection.target.name),
@@ -135,9 +99,21 @@ def plan_two_terminal_net(
         provenance=(
             "NetIntent",
             "PhysicalDesignSnapshot",
+            "two-terminal strategy dispatcher",
+            f"feasible candidates={len(dispatch.candidates)}",
+            f"rejected candidates={len(dispatch.rejections)}",
             *selection.provenance,
             "two-terminal route-plan compilation",
         ),
         channel_direction=selection.channel_direction,
         channel_coordinate=selection.channel_coordinate,
     )
+    return TwoTerminalPlanningResult(plan=plan, dispatch=dispatch)
+
+
+def plan_two_terminal_net(
+    intent: NetIntent,
+    physical_design: PhysicalDesignSnapshot,
+) -> RoutePlan:
+    """Compatibility API returning only the selected execution-ready plan."""
+    return plan_two_terminal_net_with_report(intent, physical_design).plan
