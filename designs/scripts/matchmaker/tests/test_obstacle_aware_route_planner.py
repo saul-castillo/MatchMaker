@@ -1,13 +1,9 @@
 from types import SimpleNamespace
 import unittest
 
+from matchmaker.physical.models import BoundingBox, RoutingObstacle
 from matchmaker.routing.planners.obstacle_aware_route_planner import (
-    RoutingObstacle,
-    apply_obstacle_avoidance,
     find_straight_route_blockers,
-)
-from matchmaker.routing.planners.point_to_point_route_planner import (
-    PointToPointRoutePlan,
 )
 
 
@@ -15,18 +11,20 @@ class ObstacleAwareRoutePlannerTests(unittest.TestCase):
     def setUp(self):
         self.source = SimpleNamespace(center=(0.0, 0.0), orientation=0.0)
         self.target = SimpleNamespace(center=(10.0, 0.0), orientation=0.0)
-        self.plan = PointToPointRoutePlan(
-            net_name="gate",
-            source_top_port_name="A0__gate_E",
-            target_top_port_name="A1__gate_E",
-            strategy="straight",
+
+    @staticmethod
+    def obstacle(name, corners):
+        return RoutingObstacle(
+            obstacle_id=f"instance:{name}",
+            owner_instance_name=name,
+            bbox=BoundingBox.from_corners(corners),
         )
 
     def test_inline_obstacle_is_reported(self):
         blockers = find_straight_route_blockers(
             self.source,
             self.target,
-            [RoutingObstacle("B0", ((3.0, -1.0), (5.0, 1.0)))],
+            [self.obstacle("B0", ((3.0, -1.0), (5.0, 1.0)))],
         )
         self.assertEqual(blockers, ("B0",))
 
@@ -34,7 +32,7 @@ class ObstacleAwareRoutePlannerTests(unittest.TestCase):
         blockers = find_straight_route_blockers(
             self.source,
             self.target,
-            [RoutingObstacle("B0", ((3.0, 2.0), (5.0, 4.0)))],
+            [self.obstacle("B0", ((3.0, 2.0), (5.0, 4.0)))],
         )
         self.assertEqual(blockers, ())
 
@@ -42,34 +40,19 @@ class ObstacleAwareRoutePlannerTests(unittest.TestCase):
         blockers = find_straight_route_blockers(
             self.source,
             self.target,
-            [RoutingObstacle("A0", ((-1.0, -1.0), (1.0, 1.0)))],
+            [self.obstacle("A0", ((-1.0, -1.0), (1.0, 1.0)))],
             excluded_instance_names=("A0", "A1"),
         )
         self.assertEqual(blockers, ())
 
-    def test_blocked_same_facing_straight_route_becomes_c_route(self):
-        resolved, blockers = apply_obstacle_avoidance(
-            plan=self.plan,
-            source_port=self.source,
-            target_port=self.target,
-            obstacles=[RoutingObstacle("B0", ((3.0, -1.0), (5.0, 1.0)))],
-            source_instance_name="A0",
-            target_instance_name="A1",
+    def test_clearance_expands_obstacle_bounds(self):
+        blockers = find_straight_route_blockers(
+            self.source,
+            self.target,
+            [self.obstacle("B0", ((3.0, 0.5), (5.0, 1.0)))],
+            clearance=0.5,
         )
-        self.assertEqual(resolved.strategy, "c")
         self.assertEqual(blockers, ("B0",))
-
-    def test_blocked_opposite_facing_route_fails_safe(self):
-        opposite = SimpleNamespace(center=(10.0, 0.0), orientation=180.0)
-        with self.assertRaises(RuntimeError):
-            apply_obstacle_avoidance(
-                plan=self.plan,
-                source_port=self.source,
-                target_port=opposite,
-                obstacles=[RoutingObstacle("B0", ((3.0, -1.0), (5.0, 1.0)))],
-                source_instance_name="A0",
-                target_instance_name="A1",
-            )
 
 
 if __name__ == "__main__":
