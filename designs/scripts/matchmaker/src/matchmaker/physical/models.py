@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Mapping
 
 
@@ -104,11 +105,9 @@ class RoutingObstacle:
         if not self.kind:
             raise ValueError("obstacle kind must be non-empty")
 
-    def as_legacy_mapping(self) -> dict[str, object]:
-        return {
-            "instance_name": self.owner_instance_name or self.obstacle_id,
-            "bbox": self.bbox.as_corners(),
-        }
+    @property
+    def display_name(self) -> str:
+        return self.owner_instance_name or self.obstacle_id
 
 
 @dataclass(frozen=True)
@@ -122,6 +121,45 @@ class PhysicalDesignSnapshot:
     obstacles: tuple[RoutingObstacle, ...]
     keepouts: tuple[RoutingObstacle, ...] = ()
     committed_routes: tuple[object, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        instances = dict(self.instances)
+        access_points = dict(self.access_points)
+        terminal_access = {
+            terminal: tuple(names)
+            for terminal, names in self.terminal_access.items()
+        }
+
+        for key, instance in instances.items():
+            if key != instance.instance_name:
+                raise ValueError(
+                    "instance mapping key does not match PlacedInstance.instance_name: "
+                    f"{key!r} != {instance.instance_name!r}"
+                )
+        for key, access_point in access_points.items():
+            if key != access_point.name:
+                raise ValueError(
+                    "access-point mapping key does not match AccessPoint.name: "
+                    f"{key!r} != {access_point.name!r}"
+                )
+        for terminal, names in terminal_access.items():
+            for name in names:
+                access_point = access_points.get(name)
+                if access_point is None:
+                    raise ValueError(
+                        f"terminal_access references unknown access point {name!r}"
+                    )
+                if access_point.terminal != terminal:
+                    raise ValueError(
+                        f"access point {name!r} belongs to a different terminal"
+                    )
+
+        object.__setattr__(self, "instances", MappingProxyType(instances))
+        object.__setattr__(self, "access_points", MappingProxyType(access_points))
+        object.__setattr__(self, "terminal_access", MappingProxyType(terminal_access))
+        object.__setattr__(self, "obstacles", tuple(self.obstacles))
+        object.__setattr__(self, "keepouts", tuple(self.keepouts))
+        object.__setattr__(self, "committed_routes", tuple(self.committed_routes))
 
     def instance(self, instance_name: str) -> PlacedInstance:
         try:
@@ -138,7 +176,3 @@ class PhysicalDesignSnapshot:
     def access_points_for(self, terminal: TerminalRef) -> tuple[AccessPoint, ...]:
         names = self.terminal_access.get(terminal, ())
         return tuple(self.access_points[name] for name in names)
-
-    def legacy_obstacles(self) -> tuple[dict[str, object], ...]:
-        """Temporary adapter for the current obstacle-aware route planners."""
-        return tuple(obstacle.as_legacy_mapping() for obstacle in self.obstacles)
