@@ -78,37 +78,49 @@ def _build_route_component(
     raise ValueError(f"Unsupported route strategy: {plan.strategy!r}")
 
 
-def _port(component, port_name: str, endpoint_role: str):
+def _physical_port(
+    component,
+    physical_design: PhysicalDesignSnapshot,
+    port_name: str,
+    endpoint_role: str,
+):
+    physical_design.access_point(port_name)
     try:
         return component.ports[port_name]
     except KeyError as error:
         raise KeyError(f"Unknown routing {endpoint_role} port: {port_name}") from error
 
 
-def _routing_obstacles(
-    component,
-    physical_design: PhysicalDesignSnapshot | None,
-):
-    if physical_design is None:
-        return component.info.get("matchmaker_routing_obstacles", ())
+def _validate_snapshot(component, physical_design: PhysicalDesignSnapshot) -> None:
     if physical_design.component is not component:
         raise ValueError(
             "physical_design.component must be the same component passed to the router"
         )
-    return physical_design.legacy_obstacles()
 
 
 def route_point_to_point_intent(
     component,
     pdk,
     intent: PointToPointRouteIntent,
+    physical_design: PhysicalDesignSnapshot,
     separator: str = "__",
-    physical_design: PhysicalDesignSnapshot | None = None,
 ) -> ExecutedRoute:
+    _validate_snapshot(component, physical_design)
+
     requested_source_name = intent.source.top_port_name(separator)
     requested_target_name = intent.target.top_port_name(separator)
-    source_port = _port(component, requested_source_name, "source")
-    target_port = _port(component, requested_target_name, "target")
+    source_port = _physical_port(
+        component,
+        physical_design,
+        requested_source_name,
+        "source",
+    )
+    target_port = _physical_port(
+        component,
+        physical_design,
+        requested_target_name,
+        "target",
+    )
 
     plan = plan_point_to_point_route(
         intent=intent,
@@ -117,7 +129,6 @@ def route_point_to_point_intent(
         separator=separator,
     )
 
-    obstacles = _routing_obstacles(component, physical_design)
     blockers: tuple[str, ...] = ()
     dogleg_plan = None
 
@@ -125,7 +136,7 @@ def route_point_to_point_intent(
         blockers = find_straight_route_blockers(
             source_port=source_port,
             target_port=target_port,
-            obstacles=obstacles,
+            obstacles=physical_design.obstacles,
             excluded_instance_names=(
                 intent.source.instance_name,
                 intent.target.instance_name,
@@ -142,17 +153,19 @@ def route_point_to_point_intent(
                 target_port_name=intent.target.port_name,
                 source_port=source_port,
                 target_port=target_port,
-                obstacles=obstacles,
+                obstacles=physical_design.obstacles,
                 separator=separator,
                 clearance=max(float(intent.obstacle_clearance), 1.0),
             )
-            source_port = _port(
+            source_port = _physical_port(
                 component,
+                physical_design,
                 dogleg_plan.source_top_port_name,
                 "dogleg source",
             )
-            target_port = _port(
+            target_port = _physical_port(
                 component,
+                physical_design,
                 dogleg_plan.target_top_port_name,
                 "dogleg target",
             )
@@ -173,32 +186,18 @@ def route_point_to_point_intent(
     )
     route_reference = component << route_component
 
-    detour_direction = dogleg_plan.direction if dogleg_plan is not None else None
-    detour_channel_coordinate = (
-        float(dogleg_plan.channel_coordinate) if dogleg_plan is not None else None
-    )
-    route_log = list(component.info.get("matchmaker_routes", ()))
-    route_log.append(
-        {
-            "net_name": plan.net_name,
-            "requested_source": requested_source_name,
-            "requested_target": requested_target_name,
-            "source": plan.source_top_port_name,
-            "target": plan.target_top_port_name,
-            "strategy": plan.strategy,
-            "blockers": blockers,
-            "detour_direction": detour_direction,
-            "detour_channel_coordinate": detour_channel_coordinate,
-        }
-    )
-    component.info["matchmaker_routes"] = tuple(route_log)
-
     return ExecutedRoute(
         plan=plan,
         route_reference=route_reference,
         blockers=blockers,
-        detour_direction=detour_direction,
-        detour_channel_coordinate=detour_channel_coordinate,
+        detour_direction=(
+            dogleg_plan.direction if dogleg_plan is not None else None
+        ),
+        detour_channel_coordinate=(
+            float(dogleg_plan.channel_coordinate)
+            if dogleg_plan is not None
+            else None
+        ),
     )
 
 
@@ -206,18 +205,16 @@ def route_point_to_point_intents(
     component,
     pdk,
     intents: Iterable[PointToPointRouteIntent],
+    physical_design: PhysicalDesignSnapshot,
     separator: str = "__",
-    physical_design: PhysicalDesignSnapshot | None = None,
 ) -> tuple[ExecutedRoute, ...]:
-    executed_routes = []
-    for intent in intents:
-        executed_routes.append(
-            route_point_to_point_intent(
-                component=component,
-                pdk=pdk,
-                intent=intent,
-                separator=separator,
-                physical_design=physical_design,
-            )
+    return tuple(
+        route_point_to_point_intent(
+            component=component,
+            pdk=pdk,
+            intent=intent,
+            physical_design=physical_design,
+            separator=separator,
         )
-    return tuple(executed_routes)
+        for intent in intents
+    )
