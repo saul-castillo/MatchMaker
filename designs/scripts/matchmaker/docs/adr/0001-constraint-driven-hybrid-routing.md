@@ -10,13 +10,13 @@ MatchMaker began with deterministic MOS placement and then added a point-to-poin
 
 These results show that geometric legality, route-family selection, and electrical correctness are separate concerns. They also show that a routing request cannot safely be modeled only as two fixed physical ports.
 
-The project must now choose an architecture that can grow from point-to-point routing into multi-terminal nets, matched routing, differential routing, high-current nets, high-voltage separation, CDAC buses, congestion handling, and verification feedback without accumulating cell-specific procedural logic.
+The project must grow from point-to-point routing into multi-terminal nets, matched routing, differential routing, high-current nets, high-voltage separation, CDAC buses, congestion handling, and verification feedback without accumulating cell-specific procedural logic.
 
 ## Decision
 
 MatchMaker will use a constraint-driven hybrid routing architecture.
 
-A routing problem will be defined by:
+A routing problem is defined by:
 
 1. logical connectivity;
 2. logical terminals;
@@ -26,11 +26,11 @@ A routing problem will be defined by:
 6. the placed physical-design snapshot;
 7. routing resources and already committed routes.
 
-Routing will be decomposed into topology planning, access selection, coarse path/channel planning, detailed geometry planning, execution, and verification.
+Routing is decomposed into topology planning, access selection, coarse path/channel planning, detailed geometry planning, execution, and verification.
 
-The engine will support multiple deterministic routing strategies behind a common planner interface. Strategies may be geometric templates, analog-specific templates, or graph-search planners. All strategies must emit the same typed route-plan representation and be checked by the same constraints and metrics.
+Multiple deterministic routing strategies share a common planner interface. Strategies may be geometric templates, analog-specific templates, or graph-search planners. All strategies emit the same typed route-plan representation and are checked by the same constraints and metrics.
 
-The initial strategy ladder is:
+Initial strategy ladder:
 
 ```text
 straight
@@ -41,9 +41,9 @@ straight
 → negotiated multi-net routing
 ```
 
-Logical terminals and physical access points will be separate concepts. A net should eventually reference `instance.terminal`; access selection resolves a legal physical port such as east, west, north, south, or an elevated-metal access.
+Logical terminals and physical access points are separate concepts. A net references `instance.terminal`; access selection resolves a legal physical port such as east, west, north, south, or an elevated-metal access.
 
-Hard constraints will determine feasibility. Soft costs will rank feasible candidates. Inter-net properties such as matching, shielding, symmetry, and separation will be represented through route-group or pairwise constraints rather than unstructured per-net tags.
+Hard constraints determine feasibility. Soft costs rank feasible candidates. Inter-net properties such as matching, shielding, symmetry, and separation are represented through route-group or pairwise constraints rather than unstructured per-net tags.
 
 ## Why this decision
 
@@ -57,11 +57,11 @@ Repeated analog structures often benefit from explicit routing templates. Irregu
 
 ### It preserves determinism
 
-Candidate generation, hard-constraint filtering, and cost ranking can be deterministic. This is important for reproducibility, debugging, regression testing, and LLM-assisted development.
+Candidate generation, hard-constraint filtering, and cost ranking can be deterministic. This supports reproducibility, debugging, regression testing, and LLM-assisted development.
 
 ### It prevents physical details from leaking into high-level intent
 
-The failed fixed-port routes demonstrated that a logical connection should not permanently select one physical access point before the physical context is evaluated.
+The failed fixed-port routes demonstrated that a logical connection should not permanently select one physical access point before physical context is evaluated.
 
 ### It creates a clear verification loop
 
@@ -75,15 +75,15 @@ This can produce strong early results for a single block but leads to duplicated
 
 ### One universal maze or A* router
 
-A generic shortest-path router does not naturally encode analog symmetry, matching, template topology, or parasitic balance. It may later serve as one coarse-path strategy, but it will not be the entire architecture.
+A generic shortest-path router does not naturally encode analog symmetry, matching, template topology, or parasitic balance. It may serve as one coarse-path strategy, but it is not the entire architecture.
 
 ### Pairwise fixed-port routing only
 
-This is simple but cannot represent multi-terminal topology, alternate access points, route groups, or inter-net constraints. It has already produced DRC-clean electrical shorts in the smoke test.
+This cannot represent multi-terminal topology, alternate access points, route groups, or inter-net constraints. It already produced DRC-clean electrical shorts in the smoke test.
 
 ### Direct geometry mutation followed by DRC repair
 
-DRC cannot prove connectivity or analog intent. Repairing geometry after external verification without a stable plan representation makes failures difficult to attribute and tends toward non-deterministic patching.
+DRC cannot prove connectivity or analog intent. Repairing geometry after external verification without a stable plan representation makes failures difficult to attribute and tends toward nondeterministic patching.
 
 ## Consequences
 
@@ -99,10 +99,10 @@ DRC cannot prove connectivity or analog intent. Repairing geometry after externa
 ### Costs
 
 - more typed intermediate models;
-- an explicit physical-design database or snapshot is required;
+- an explicit physical-design snapshot is required;
 - constraints must be compiled rather than passed as free-form options;
 - route strategies need common plan and metric interfaces;
-- some current code using physical port names and `Component.info` becomes transitional.
+- the current fixed-access point-to-point intent remains transitional.
 
 ## Required invariants
 
@@ -113,16 +113,24 @@ DRC cannot prove connectivity or analog intent. Repairing geometry after externa
 5. DRC pass alone is never reported as electrical success.
 6. Multi-net constraints are represented explicitly rather than inferred from names.
 7. Specialized routing templates use the same plan and verification contracts as general strategies.
+8. Route execution consumes an explicit `PhysicalDesignSnapshot`.
 
-## Migration plan
+## Migration status
 
-1. Add extracted-connectivity assertions to the current dogleg demo.
-2. Introduce a typed placement/physical-design result containing instances, access points, obstacles, and existing routes.
-3. Replace fixed physical endpoint intent with logical terminal references plus access selection.
-4. Add typed net constraints and route-group constraints.
-5. Introduce a common route-plan and metrics model.
-6. Refactor current straight, C/L, and dogleg behavior into planner strategies behind a dispatcher.
-7. Add multi-terminal topology planning.
-8. Add matched and differential route-group planners.
-9. Add a coarse routing graph and congestion-aware multi-net planning.
-10. Add LVS-grounded repair after the forward flow is stable.
+Completed:
+
+- extracted-connectivity assertions in the dogleg demo;
+- typed physical-design snapshot with instances, access points, and obstacles;
+- snapshot-required route execution;
+- removal of legacy `Component.info` routing state.
+
+Next:
+
+1. replace fixed physical endpoints with logical terminal references and access selection;
+2. add typed net constraints and route-group constraints;
+3. introduce a common route-plan and metrics model;
+4. refactor straight, L/C, and dogleg behavior behind a strategy dispatcher;
+5. add multi-terminal topology planning;
+6. add matched and differential route-group planners;
+7. add a coarse routing graph and congestion-aware multi-net planning;
+8. add LVS-grounded repair after the forward flow is stable.
