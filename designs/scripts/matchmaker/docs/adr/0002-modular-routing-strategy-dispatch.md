@@ -1,10 +1,10 @@
 # ADR 0002: Modular routing strategy dispatch
 
-Status: Accepted for implementation on `feature/manhattan-routing-dispatcher`
+Status: Accepted
 
 ## Context
 
-MatchMaker now has a stable logical routing contract:
+MatchMaker has a stable logical routing contract:
 
 ```text
 NetIntent + PhysicalDesignSnapshot -> RoutePlan -> geometry -> verification
@@ -48,7 +48,7 @@ dogleg_route_strategy.py
   - aligned external spatial channel
 ```
 
-All strategies emit the same `RouteCandidate`, and the selected candidate is compiled into the existing common `RoutePlan`.
+All strategies emit the same `RouteCandidate`, and the selected candidate is compiled into the common `RoutePlan`.
 
 ## Device-specific extension model
 
@@ -90,7 +90,7 @@ Costs and limitations:
 - candidate enumeration may grow quickly as access counts and strategy counts increase;
 - the current dispatcher is two-terminal and same-layer only;
 - route-to-route obstacles, congestion, vias, and PDK rule resolution remain future work;
-- strategy registration is currently static rather than plugin-discovered.
+- strategy registration is static rather than plugin-discovered.
 
 ## Invariants
 
@@ -102,8 +102,6 @@ Costs and limitations:
 6. DRC does not substitute for extracted connectivity or LVS.
 
 ## Next evolution
-
-After the L/Z Manhattan slice is physically validated:
 
 1. incorporate committed routes as obstacles and routing resources;
 2. add PDK width, layer, and via rule resolution;
