@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 import unittest
 
+from matchmaker.physical.models import BoundingBox, RoutingObstacle
 from matchmaker.routing.planners.spatial_dogleg_planner import (
     choose_spatial_dogleg,
 )
@@ -14,11 +15,18 @@ class SpatialDoglegPlannerTests(unittest.TestCase):
             "A0__gate_W": SimpleNamespace(center=(-2.0, 0.0), orientation=180.0),
             "A1__gate_E": SimpleNamespace(center=(12.0, 0.0), orientation=0.0),
         }
-        self.obstacles = (
-            {"instance_name": "A0", "bbox": ((-3.0, -2.0), (1.0, 2.0))},
-            {"instance_name": "B0", "bbox": ((1.0, -2.0), (5.0, 2.0))},
-            {"instance_name": "B1", "bbox": ((5.0, -2.0), (9.0, 2.0))},
-            {"instance_name": "A1", "bbox": ((9.0, -2.0), (13.0, 2.0))},
+        self.obstacles = tuple(
+            RoutingObstacle(
+                obstacle_id=f"instance:{name}",
+                owner_instance_name=name,
+                bbox=BoundingBox.from_corners(corners),
+            )
+            for name, corners in (
+                ("A0", ((-3.0, -2.0), (1.0, 2.0))),
+                ("B0", ((1.0, -2.0), (5.0, 2.0))),
+                ("B1", ((5.0, -2.0), (9.0, 2.0))),
+                ("A1", ((9.0, -2.0), (13.0, 2.0))),
+            )
         )
 
     def test_horizontal_blocked_route_uses_outward_ports_and_north_channel(self):
