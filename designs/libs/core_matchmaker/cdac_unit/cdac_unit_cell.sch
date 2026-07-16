@@ -12,9 +12,10 @@ C {iopin.sym} 160 -60 0 0 {name=VSS lab=VSS}
 C {iopin.sym} 160 -40 0 0 {name=VDD lab=VDD}
 C {ipin.sym} -140 -80 0 0 {name=SEL lab=SEL}
 C {ipin.sym} -140 -60 0 0 {name=SELB lab=SELB}
-C {capa.sym} 290 -20 1 0 {name=CUNIT
-m=1
-value=20f
-footprint=1206
-device="ceramic capacitor"}
 C {iopin.sym} 210 -20 1 0 {name=TOP1 lab=BOT}
+C {symbols/cap_mim_2f0fF.sym} 290 -20 1 0 {name=C1
+W=5u
+L=5u
+model=cap_mim_2f0fF
+spiceprefix=X
+m=1}

@@ -28,5 +28,5 @@ C {iopin.sym} 190 -70 0 0 {name=p3 lab=VDD}
 C {iopin.sym} 210 110 0 0 {name=p4 lab=OUT}
 C {ipin.sym} -190 -110 0 0 {name=p5 lab=SEL}
 C {ipin.sym} -190 -90 0 0 {name=p6 lab=SELB}
-C {libs/core_matchmaker/tg_switch/tg_switch.sym} 0 -80 0 0 {name=x1}
-C {libs/core_matchmaker/tg_switch/tg_switch.sym} 0 80 0 0 {name=x2}
+C {libs/core_matchmaker/tg_switch/tg_switch_nmos32u_pmos64u.sym} 0 -80 0 0 {name=x1}
+C {libs/core_matchmaker/tg_switch/tg_switch_nmos32u_pmos64u.sym} 0 80 0 0 {name=x2}
