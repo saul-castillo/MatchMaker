@@ -8,10 +8,10 @@ The CDAC contains 15 switched unit capacitors and one termination capacitor. All
 
 | Bank | Weight | Unit capacitors | Selector |
 | --- | ---: | ---: | --- |
-| B0 | 1C | 1 | base `ref_sel_2to1` |
-| B1 | 2C | 2 | `ref_sel_2to1_nmos8u_pmos16u` |
-| B2 | 4C | 4 | `ref_sel_2to1_nmos16u_pmos32u` |
-| B3 | 8C | 8 | `ref_sel_2to1_nmos32u_pmos64u` |
+| B0 | 1C | 1 | base `7D_ref_sel_2to1` |
+| B1 | 2C | 2 | `7D_ref_sel_2to1_nmos8u_pmos16u` |
+| B2 | 4C | 4 | `7D_ref_sel_2to1_nmos16u_pmos32u` |
+| B3 | 8C | 8 | `7D_ref_sel_2to1_nmos32u_pmos64u` |
 | termination | 1C | 1 | bottom plate tied directly to VSS |
 
 Each selector contains two transmission gates: one connects its bank bottom plate to VREF and the other connects it to VSS. `Bn=1` selects VREF; `Bn=0` selects VSS. `BnB` is the required complementary control.

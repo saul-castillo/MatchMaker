@@ -18,7 +18,7 @@ N -260 -30 -260 50 {lab=SEL}
 N -260 -30 -150 -30 {lab=SEL}
 N -180 -10 -150 -10 {lab=SELB}
 N -180 -10 -180 50 {lab=SELB}
-C {libs/core_matchmaker/ref_sel_2to1/ref_sel_2to1.sym} 0 0 0 0 {name=x1}
+C {libs/core_matchmaker/7D_ref_sel_2to1/7D_ref_sel_2to1.sym} 0 0 0 0 {name=x1}
 C {vsource.sym} 190 80 0 0 {name=VDD value=1.8 savecurrent=false}
 C {vsource.sym} 310 80 0 0 {name=VREF value=1.8 savecurrent=false}
 C {gnd.sym} 250 50 0 0 {name=l1 lab=GND}

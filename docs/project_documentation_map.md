@@ -21,13 +21,13 @@ designs/libs/
     <cell_name>/
       <cell_name>.sch
       <cell_name>.sym
-      README.md          # optional cell-specific documentation
+      <cell_name>_README.md  # optional cell-specific documentation
 
   tb_matchmaker/
     <testbench_name>/
       <testbench_name>.sch
 ```
 
-Each reusable circuit cell has its own directory. Core-cell filenames match the directory name. Testbench filenames are descriptive and remain in the `tb_matchmaker` library.
+Each reusable circuit cell has its own directory. Core-cell filenames match the directory name. MatchMaker cell names use the team prefix `7D_`; testbench names place the identifier after the testbench prefix as `tb_7D_`. Testbench files remain in the `tb_matchmaker` library.
 
 See [the core reference-library index](../designs/libs/core_matchmaker/README.md) for available cells.

@@ -78,13 +78,13 @@ N 820 -130 820 -0 {lab=VDD}
 N 830 -110 830 -20 {lab=VSS}
 N 800 -110 830 -110 {lab=VSS}
 N 410 -110 800 -110 {lab=VSS}
-C {libs/core_matchmaker/cdac_unit_cell/cdac_unit_cell.sym} -200 0 0 0 {name=x1}
-C {libs/core_matchmaker/cdac_unit_cell/cdac_unit_cell.sym} 200 0 0 0 {name=x2}
-C {libs/core_matchmaker/cdac_unit_cell/cdac_unit_cell.sym} 200 120 0 0 {name=x3}
-C {libs/core_matchmaker/cdac_unit_cell/cdac_unit_cell.sym} 620 0 0 0 {name=x4}
-C {libs/core_matchmaker/cdac_unit_cell/cdac_unit_cell.sym} 620 120 0 0 {name=x5}
-C {libs/core_matchmaker/cdac_unit_cell/cdac_unit_cell.sym} 620 240 0 0 {name=x6}
-C {libs/core_matchmaker/cdac_unit_cell/cdac_unit_cell.sym} 620 360 0 0 {name=x7}
+C {libs/core_matchmaker/7D_cdac_unit_cell/7D_cdac_unit_cell.sym} -200 0 0 0 {name=x1}
+C {libs/core_matchmaker/7D_cdac_unit_cell/7D_cdac_unit_cell.sym} 200 0 0 0 {name=x2}
+C {libs/core_matchmaker/7D_cdac_unit_cell/7D_cdac_unit_cell.sym} 200 120 0 0 {name=x3}
+C {libs/core_matchmaker/7D_cdac_unit_cell/7D_cdac_unit_cell.sym} 620 0 0 0 {name=x4}
+C {libs/core_matchmaker/7D_cdac_unit_cell/7D_cdac_unit_cell.sym} 620 120 0 0 {name=x5}
+C {libs/core_matchmaker/7D_cdac_unit_cell/7D_cdac_unit_cell.sym} 620 240 0 0 {name=x6}
+C {libs/core_matchmaker/7D_cdac_unit_cell/7D_cdac_unit_cell.sym} 620 360 0 0 {name=x7}
 C {iopin.sym} 810 450 0 0 {name=VOUT lab=VOUT}
 C {ipin.sym} -60 -90 0 0 {name=VREF lab=VREF}
 C {ipin.sym} -60 -110 0 0 {name=VSS lab=VSS}

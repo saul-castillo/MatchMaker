@@ -38,7 +38,7 @@ For repository, circuit-library, and documentation placement, read:
 
 - [Project documentation map](docs/project_documentation_map.md)
 - [Core MatchMaker reference library](designs/libs/core_matchmaker/README.md)
-- [Current 4-bit banked CDAC reference](designs/libs/core_matchmaker/7D_cdac_4b_banked_scaled_selectors/README.md)
+- [Current 4-bit banked CDAC reference](designs/libs/core_matchmaker/7D_cdac_4b_banked_scaled_selectors/7D_cdac_4b_banked_scaled_selectors_README.md)
 
 ## Run the regressions
 

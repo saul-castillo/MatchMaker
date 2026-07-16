@@ -21,7 +21,7 @@ N 220 90 250 90 {lab=TAIL}
 N 280 70 430 70 {lab=GND}
 N 250 90 470 90 {lab=TAIL}
 N 500 20 500 90 {lab=GND}
-C {libs/core_matchmaker/matched_nmos_diffpair_4u/matched_nmos_diffpair_4u.sym} 70 60 0 0 {name=x1}
+C {libs/core_matchmaker/7D_matched_nmos_diffpair_4u/7D_matched_nmos_diffpair_4u.sym} 70 60 0 0 {name=x1}
 C {vsource.sym} 190 -90 0 0 {name=VDD value=3.3 savecurrent=false}
 C {vdd.sym} 190 -120 0 0 {name=l2 lab=VDD}
 C {vsource.sym} 70 -90 0 0 {name=VINN value=1.65 savecurrent=false}

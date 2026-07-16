@@ -101,7 +101,7 @@ C {vsource.sym} -180 170 0 0 {name=VB3B value="PWL(0 1.8 167n 1.8 167.1n 0 177n 
 C {vsource.sym} -220 260 0 0 {name=VB3 value="PWL(0 0 167n 0 167.1n 1.8 177n 1.8 177.1n 0 187n 0 187.1n 1.8 197n 1.8 197.1n 0 207n 0 207.1n 1.8 217n 1.8 217.1n 0 227n 0 227.1n 1.8 237n 1.8 237.1n 0 247n 0 247.1n 1.8 257n 1.8 257.1n 0 267n 0 267.1n 1.8 277n 1.8 277.1n 0 287n 0 287.1n 1.8 297n 1.8 297.1n 0 307n 0 307.1n 1.8 317n 1.8 317.1n 0)" savecurrent=false}
 C {gnd.sym} -220 290 0 0 {name=l3 lab=GND}
 C {gnd.sym} -180 200 0 0 {name=l12 lab=GND}
-C {libs/core_matchmaker/7d_cdac_4b_single/7d_cdac_4b_single.sym} 0 0 0 0 {name=x1}
+C {libs/core_matchmaker/7D_cdac_4b_single/7D_cdac_4b_single.sym} 0 0 0 0 {name=x1}
 C {lab_pin.sym} -220 100 0 0 {name=B3 sig_type=std_logic lab=B3}
 C {vsource.sym} -510 830 0 0 {name=VRSTB value="PULSE(0 1.8 5n 100p 100p 14n 20n)" savecurrent=false}
 C {vsource.sym} -550 920 0 0 {name=VRST value="PULSE(1.8 0 5n 100p 100p 14n 20n)" savecurrent=false}

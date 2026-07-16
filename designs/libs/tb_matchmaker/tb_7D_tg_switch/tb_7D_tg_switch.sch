@@ -18,7 +18,7 @@ N 150 20 390 20 {lab=OUT}
 N 390 20 390 60 {lab=OUT}
 N 390 20 460 20 {lab=OUT}
 N 460 20 460 60 {lab=OUT}
-C {libs/core_matchmaker/tg_switch/tg_switch.sym} 0 -10 0 0 {name=x1}
+C {libs/core_matchmaker/7D_tg_switch/7D_tg_switch.sym} 0 -10 0 0 {name=x1}
 C {vsource.sym} 190 90 0 0 {name=VDD value=1.8 savecurrent=false}
 C {gnd.sym} 190 120 0 0 {name=l1 lab=GND}
 C {gnd.sym} 250 60 0 0 {name=l2 lab=GND}

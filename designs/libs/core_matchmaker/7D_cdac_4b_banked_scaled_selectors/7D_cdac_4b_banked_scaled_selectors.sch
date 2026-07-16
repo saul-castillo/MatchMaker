@@ -68,8 +68,8 @@ N 100 470 100 580 {lab=VDD}
 N 40 580 100 580 {lab=VDD}
 N 80 540 80 560 {lab=VSS}
 N 40 560 80 560 {lab=VSS}
-C {libs/core_matchmaker/tg_switch/tg_switch.sym} -110 570 0 0 {name=x1}
-C {libs/core_matchmaker/ref_sel_2to1/ref_sel_2to1.sym} -110 -190 0 0 {name=x2}
+C {libs/core_matchmaker/7D_tg_switch/7D_tg_switch.sym} -110 570 0 0 {name=x1}
+C {libs/core_matchmaker/7D_ref_sel_2to1/7D_ref_sel_2to1.sym} -110 -190 0 0 {name=x2}
 C {symbols/cap_mim_2f0fF.sym} 230 -130 0 0 {name=C1
 W=5u
 L=5u
@@ -180,6 +180,6 @@ spiceprefix=X
 m=1}
 C {ipin.sym} -260 540 0 0 {name=RST lab=RST}
 C {ipin.sym} -260 560 0 0 {name=RSTB lab=RSTB}
-C {libs/core_matchmaker/ref_sel_2to1_nmos16u_pmos32u/ref_sel_2to1_nmos16u_pmos32u.sym} -110 230 0 0 {name=x3}
-C {libs/core_matchmaker/ref_sel_2to1_nmos32u_pmos64u/ref_sel_2to1_nmos32u_pmos64u.sym} -110 460 0 0 {name=x4}
-C {libs/core_matchmaker/ref_sel_2to1_nmos8u_pmos16u/ref_sel_2to1_nmos8u_pmos16u.sym} -110 40 0 0 {name=x5}
+C {libs/core_matchmaker/7D_ref_sel_2to1_nmos16u_pmos32u/7D_ref_sel_2to1_nmos16u_pmos32u.sym} -110 230 0 0 {name=x3}
+C {libs/core_matchmaker/7D_ref_sel_2to1_nmos32u_pmos64u/7D_ref_sel_2to1_nmos32u_pmos64u.sym} -110 460 0 0 {name=x4}
+C {libs/core_matchmaker/7D_ref_sel_2to1_nmos8u_pmos16u/7D_ref_sel_2to1_nmos8u_pmos16u.sym} -110 40 0 0 {name=x5}

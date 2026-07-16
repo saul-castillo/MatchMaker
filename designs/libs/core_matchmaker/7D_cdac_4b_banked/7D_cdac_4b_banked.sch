@@ -68,15 +68,15 @@ N 100 470 100 580 {lab=VDD}
 N 40 580 100 580 {lab=VDD}
 N 80 540 80 560 {lab=VSS}
 N 40 560 80 560 {lab=VSS}
-C {libs/core_matchmaker/tg_switch/tg_switch.sym} -110 570 0 0 {name=x1}
-C {libs/core_matchmaker/ref_sel_2to1/ref_sel_2to1.sym} -110 -190 0 0 {name=x2}
+C {libs/core_matchmaker/7D_tg_switch/7D_tg_switch.sym} -110 570 0 0 {name=x1}
+C {libs/core_matchmaker/7D_ref_sel_2to1/7D_ref_sel_2to1.sym} -110 -190 0 0 {name=x2}
 C {symbols/cap_mim_2f0fF.sym} 230 -130 0 0 {name=C1
 W=5u
 L=5u
 model=cap_mim_2f0fF
 spiceprefix=X
 m=1}
-C {libs/core_matchmaker/ref_sel_2to1/ref_sel_2to1.sym} -110 40 0 0 {name=x3}
+C {libs/core_matchmaker/7D_ref_sel_2to1/7D_ref_sel_2to1.sym} -110 40 0 0 {name=x3}
 C {symbols/cap_mim_2f0fF.sym} 230 100 0 0 {name=C2
 W=5u
 L=5u
@@ -89,7 +89,7 @@ L=5u
 model=cap_mim_2f0fF
 spiceprefix=X
 m=1}
-C {libs/core_matchmaker/ref_sel_2to1/ref_sel_2to1.sym} -110 230 0 0 {name=x4}
+C {libs/core_matchmaker/7D_ref_sel_2to1/7D_ref_sel_2to1.sym} -110 230 0 0 {name=x4}
 C {symbols/cap_mim_2f0fF.sym} 230 290 0 0 {name=C4
 W=5u
 L=5u
@@ -170,7 +170,7 @@ C {ipin.sym} -260 200 0 0 {name=B2 lab=B2}
 C {ipin.sym} -260 220 0 0 {name=B3 lab=B2B}
 C {ipin.sym} -260 430 0 0 {name=B4 lab=B3}
 C {ipin.sym} -260 450 0 0 {name=B5 lab=B3B}
-C {libs/core_matchmaker/ref_sel_2to1/ref_sel_2to1.sym} -110 460 0 0 {name=x5}
+C {libs/core_matchmaker/7D_ref_sel_2to1/7D_ref_sel_2to1.sym} -110 460 0 0 {name=x5}
 C {ipin.sym} -20 -300 0 0 {name=VREF lab=VREF}
 C {ipin.sym} -20 -320 0 0 {name=VSS lab=VSS}
 C {ipin.sym} -20 -340 0 0 {name=VDD lab=VDD}
