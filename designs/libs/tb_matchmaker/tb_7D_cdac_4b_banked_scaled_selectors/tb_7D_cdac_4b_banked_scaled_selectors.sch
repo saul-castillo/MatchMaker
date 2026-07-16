@@ -108,4 +108,4 @@ C {gnd.sym} -550 950 0 0 {name=l4 lab=GND}
 C {gnd.sym} -510 860 0 0 {name=l13 lab=GND}
 C {lab_pin.sym} -220 100 0 0 {name=p5 sig_type=std_logic lab=RST}
 C {lab_pin.sym} -550 -20 0 0 {name=p3 sig_type=std_logic lab=B1}
-C {libs/core_matchmaker/7D_cdac_4b_banked/7D_cdac_4b_banked.sym} 0 0 0 0 {name=x1}
+C {libs/core_matchmaker/7D_cdac_4b_banked_scaled_selectors/7D_cdac_4b_banked_scaled_selectors.sym} 0 0 0 0 {name=x1}
