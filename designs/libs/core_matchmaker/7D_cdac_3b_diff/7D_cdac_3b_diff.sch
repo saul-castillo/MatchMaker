@@ -36,8 +36,8 @@ N -330 -40 -330 180 {lab=xxx}
 N -330 -40 -150 -40 {lab=xxx}
 N -380 -40 -330 -40 {lab=xxx}
 N -300 -200 -150 -200 {lab=VDD}
-C {libs/core_matchmaker/7d_cdac_3b_single/7D_cdac_3b_single.sym} 0 -120 0 0 {name=x1}
-C {libs/core_matchmaker/7d_cdac_3b_single/7D_cdac_3b_single.sym} 0 120 0 0 {name=x2}
+C {libs/core_matchmaker/7D_cdac_3b_single/7D_cdac_3b_single.sym} 0 -120 0 0 {name=x1}
+C {libs/core_matchmaker/7D_cdac_3b_single/7D_cdac_3b_single.sym} 0 120 0 0 {name=x2}
 C {iopin.sym} 150 -200 0 0 {name=VOUTP lab=VOUTP}
 C {iopin.sym} 150 40 0 0 {name=VOUTN lab=VOUTN}
 C {ipin.sym} -300 -200 0 0 {name=VDD lab=VDD}

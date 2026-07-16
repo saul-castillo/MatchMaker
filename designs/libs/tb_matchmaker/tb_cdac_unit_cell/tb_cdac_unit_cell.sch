@@ -40,7 +40,7 @@ tran 10p 50n
 plot v(sel) v(selb) v(bot)
 .endc"}
 C {lab_pin.sym} 180 80 2 0 {name=p1 sig_type=std_logic lab=TOP}
-C {libs/core_matchmaker/cdac_unit/cdac_unit_cell.sym} 0 10 0 0 {name=x1}
+C {libs/core_matchmaker/cdac_unit_cell/cdac_unit_cell.sym} 0 10 0 0 {name=x1}
 C {gnd.sym} 180 140 0 0 {name=l1 lab=GND}
 C {lab_pin.sym} 150 30 2 0 {name=p2 sig_type=std_logic lab=BOT}
 C {lab_pin.sym} -280 -30 0 0 {name=p3 sig_type=std_logic lab=SEL}

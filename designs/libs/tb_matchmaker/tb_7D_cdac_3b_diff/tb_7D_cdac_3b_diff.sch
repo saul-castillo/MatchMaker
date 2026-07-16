@@ -66,7 +66,7 @@ plot v(voutp)-v(voutn)
 C {lab_pin.sym} -220 60 0 0 {name=p2 sig_type=std_logic lab=B2}
 C {lab_pin.sym} -330 20 0 0 {name=p3 sig_type=std_logic lab=B1}
 C {lab_pin.sym} -440 220 0 0 {name=p4 sig_type=std_logic lab=B0}
-C {libs/core_matchmaker/7d_cdac_3b_diff/7D_cdac_3b_diff.sym} 0 0 0 0 {name=x1}
+C {libs/core_matchmaker/7D_cdac_3b_diff/7D_cdac_3b_diff.sym} 0 0 0 0 {name=x1}
 C {lab_pin.sym} 160 -60 3 0 {name=p5 sig_type=std_logic lab=VOUTN}
 C {res.sym} 280 0 0 0 {name=RLEAKP
 value=10G

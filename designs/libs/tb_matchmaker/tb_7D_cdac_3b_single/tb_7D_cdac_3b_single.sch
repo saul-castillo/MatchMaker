@@ -26,7 +26,7 @@ N -400 -0 -400 410 {lab=#net5}
 N -400 -0 -150 -0 {lab=#net5}
 N -440 -20 -150 -20 {lab=VOUT}
 N -440 -20 -440 370 {lab=VOUT}
-C {libs/core_matchmaker/7d_cdac_3b_single/7D_cdac_3b_single.sym} 0 0 0 0 {name=x1}
+C {libs/core_matchmaker/7D_cdac_3b_single/7D_cdac_3b_single.sym} 0 0 0 0 {name=x1}
 C {vsource.sym} -520 10 0 0 {name=VREF value=1.2 savecurrent=false}
 C {gnd.sym} -660 40 0 0 {name=l1 lab=GND}
 C {gnd.sym} -590 40 0 0 {name=l2 lab=GND}

@@ -34,6 +34,12 @@ designs/scripts/matchmaker/docs/adr/
 
 `ENGINEERING_MAP.md` is the canonical live-state document. `VALIDATION_STATUS.md` records only physical results demonstrated in the Chipathon `/foss` environment. ADRs preserve durable architectural decisions.
 
+For repository, circuit-library, and documentation placement, read:
+
+- [Project documentation map](docs/project_documentation_map.md)
+- [Core MatchMaker reference library](designs/libs/core_matchmaker/README.md)
+- [Current 4-bit banked CDAC reference](designs/libs/core_matchmaker/7D_cdac_4b_banked_scaled_selectors/README.md)
+
 ## Run the regressions
 
 Inside the Chipathon container:
@@ -65,6 +71,13 @@ Each routing command generates GDS, runs DRC, extracts SPICE, and exits nonzero 
 
 ```text
 designs/
+  libs/core_matchmaker/<reference_cell>/
+    <reference_cell>.sch
+    <reference_cell>.sym
+
+  libs/tb_matchmaker/<testbench>/
+    <testbench>.sch
+
   libs/core_analog/<generated_cell>/
     gds/
     netlist/
@@ -85,7 +98,7 @@ designs/
     tests/
 ```
 
-The Python package lives under `designs/scripts/matchmaker/src/matchmaker/`. Generated cell artifacts live under `designs/libs/core_analog/`.
+The Python package lives under `designs/scripts/matchmaker/src/matchmaker/`. Hand-authored reference circuits and testbenches live under `designs/libs/core_matchmaker/` and `designs/libs/tb_matchmaker/`. Generated cell artifacts live under `designs/libs/core_analog/`.
 
 ## Working principle
 

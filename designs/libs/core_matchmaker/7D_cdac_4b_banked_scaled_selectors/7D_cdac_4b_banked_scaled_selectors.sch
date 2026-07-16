@@ -180,6 +180,6 @@ spiceprefix=X
 m=1}
 C {ipin.sym} -260 540 0 0 {name=RST lab=RST}
 C {ipin.sym} -260 560 0 0 {name=RSTB lab=RSTB}
-C {libs/core_matchmaker/ref_sel_2to1/ref_sel_2to1_nmos16u_pmos32u.sym} -110 230 0 0 {name=x3}
-C {libs/core_matchmaker/ref_sel_2to1/ref_sel_2to1_nmos32u_pmos64u.sym} -110 460 0 0 {name=x4}
-C {libs/core_matchmaker/ref_sel_2to1/ref_sel_2to1_nmos8u_pmos16u.sym} -110 40 0 0 {name=x5}
+C {libs/core_matchmaker/ref_sel_2to1_nmos16u_pmos32u/ref_sel_2to1_nmos16u_pmos32u.sym} -110 230 0 0 {name=x3}
+C {libs/core_matchmaker/ref_sel_2to1_nmos32u_pmos64u/ref_sel_2to1_nmos32u_pmos64u.sym} -110 460 0 0 {name=x4}
+C {libs/core_matchmaker/ref_sel_2to1_nmos8u_pmos16u/ref_sel_2to1_nmos8u_pmos16u.sym} -110 40 0 0 {name=x5}
