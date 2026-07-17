@@ -20,9 +20,9 @@ def _bbox_edges(component) -> tuple[float, float, float, float]:
     return float(xmin), float(ymin), float(xmax), float(ymax)
 
 
-def _center_x(reference, component) -> None:
-    xmin, _, xmax, _ = _bbox_edges(component)
-    reference.movex(-((xmin + xmax) / 2.0))
+def _center_y(reference, component) -> None:
+    _, ymin, _, ymax = _bbox_edges(component)
+    reference.movey(-((ymin + ymax) / 2.0))
 
 
 def build_reference_selector_child_placement(
@@ -31,29 +31,30 @@ def build_reference_selector_child_placement(
     vref_switch: GeneratedTransmissionGate,
     vss_switch: GeneratedTransmissionGate,
 ) -> PlacementResult:
-    """Place the two generated child switches using runtime envelopes.
+    """Place two generated transmission gates from runtime envelopes.
 
-    VREF is above VSS. Both cells are centered on the same x axis. The vertical
-    separation comes only from the child bboxes and typed selector policy.
+    The VREF switch is left of the VSS switch. Their y centers are aligned so
+    the inner output accesses can form a direct common node. Horizontal spacing
+    comes only from child bboxes and the typed selector policy.
     """
 
     top = Component(name=intent.resolved_cell_name)
     vref_reference = top << vref_switch.component
     vss_reference = top << vss_switch.component
 
-    _center_x(vref_reference, vref_switch.component)
-    _center_x(vss_reference, vss_switch.component)
+    _center_y(vref_reference, vref_switch.component)
+    _center_y(vss_reference, vss_switch.component)
 
-    _, vref_ymin, _, _ = _bbox_edges(vref_switch.component)
-    _, _, _, vss_ymax = _bbox_edges(vss_switch.component)
+    _, _, vref_xmax, _ = _bbox_edges(vref_switch.component)
+    vss_xmin, _, _, _ = _bbox_edges(vss_switch.component)
     half_gap = intent.policy.child_gap / 2.0
-    vref_reference.movey(half_gap - vref_ymin)
-    vss_reference.movey(-half_gap - vss_ymax)
+    vref_reference.movex(-half_gap - vref_xmax)
+    vss_reference.movex(half_gap - vss_xmin)
 
     plan = PlacementPlan(
         cell_name=intent.resolved_cell_name,
-        rows=2,
-        cols=1,
+        rows=1,
+        cols=2,
         tiles=(
             Tile(
                 name=VREF_SWITCH_INSTANCE_NAME,
@@ -66,8 +67,8 @@ def build_reference_selector_child_placement(
             Tile(
                 name=VSS_SWITCH_INSTANCE_NAME,
                 group="VSS_SWITCH",
-                row=1,
-                col=0,
+                row=0,
+                col=1,
                 orientation="R0",
                 role="active",
             ),
@@ -88,8 +89,8 @@ def build_reference_selector_child_placement(
             instance_name=VSS_SWITCH_INSTANCE_NAME,
             cell_name=str(vss_switch.component.name),
             reference=vss_reference,
-            row=1,
-            col=0,
+            row=0,
+            col=1,
             orientation="R0",
             role="active",
             group="VSS_SWITCH",
