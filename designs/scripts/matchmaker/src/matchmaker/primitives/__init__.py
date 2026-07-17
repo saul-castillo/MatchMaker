@@ -1,5 +1,6 @@
-from .gf180_mos_primitive_factory import create_gf180_mos_primitive
+"""PDK/gLayout primitive construction adapters.
 
-__all__ = [
-    "create_gf180_mos_primitive",
-]
+Import concrete factories from their modules. This package initializer remains
+side-effect free so pure option/spec modules do not require gLayout at import
+time.
+"""
