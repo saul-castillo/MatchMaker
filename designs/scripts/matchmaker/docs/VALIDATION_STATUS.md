@@ -31,7 +31,7 @@ route length: 44.8
 route bends: 2
 route width: 0.5
 feasible route candidates: 4
-rejected route candidates: 110
+rejected candidates: 110
 physical access points: 128
 DRC passed: True
 DRC violations: 0
