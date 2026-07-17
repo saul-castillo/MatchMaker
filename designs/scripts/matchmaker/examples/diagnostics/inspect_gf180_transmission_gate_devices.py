@@ -4,6 +4,9 @@ from pathlib import Path
 
 from glayout import gf180
 
+from matchmaker.physical.gf180_mos_access import (
+    classify_gf180_mos_external_port_name,
+)
 from matchmaker.primitives.gf180_mos_primitive_factory import (
     create_gf180_mos_primitive,
     nmos,
@@ -12,18 +15,6 @@ from matchmaker.primitives.gf180_mos_primitive_factory import (
 from matchmaker.specs.banked_cdac_spec import (
     make_gf180_4bit_banked_cdac_reference_spec,
 )
-
-
-_CARDINAL_DIRECTIONS = frozenset({"N", "S", "E", "W"})
-_TERMINAL_ALIASES = {
-    "gate": "gate",
-    "source": "source",
-    "drain": "drain",
-    "bulk": "bulk",
-    "body": "bulk",
-    "substrate": "bulk",
-    "well": "bulk",
-}
 
 
 def _ports(component):
@@ -35,56 +26,53 @@ def _ports(component):
     return tuple(ports)
 
 
-def _canonical_terminal(port_name: str) -> str | None:
-    parts = port_name.split("_")
-    if len(parts) != 2:
-        return None
-    terminal_name, direction = parts
-    if direction.upper() not in _CARDINAL_DIRECTIONS:
-        return None
-    return _TERMINAL_ALIASES.get(terminal_name.lower())
+def _report_port(prefix: str, port, *, terminal: str | None = None) -> None:
+    terminal_text = "" if terminal is None else f"terminal={terminal!r} "
+    print(
+        f"{prefix}: "
+        f"{terminal_text}"
+        f"name={getattr(port, 'name', None)!r} "
+        f"center={tuple(map(float, port.center))} "
+        f"orientation={float(port.orientation)} "
+        f"width={float(port.width)} "
+        f"layer={port.layer!r}"
+    )
 
 
 def _report_device(label: str, component, *, full_ports: bool) -> None:
     ports = sorted(_ports(component), key=lambda port: str(getattr(port, "name", "")))
-    canonical = tuple(
-        (port, _canonical_terminal(str(getattr(port, "name", ""))))
-        for port in ports
-        if _canonical_terminal(str(getattr(port, "name", ""))) is not None
-    )
+    canonical = []
+    simple_unclassified = []
+    for port in ports:
+        port_name = str(getattr(port, "name", ""))
+        classification = classify_gf180_mos_external_port_name(port_name)
+        if classification is not None:
+            canonical.append((port, classification[0]))
+        elif len(port_name.split("_")) == 2:
+            simple_unclassified.append(port)
 
     print(f"{label} component name: {component.name}")
     print(f"{label} bbox: {component.bbox}")
     print(f"{label} raw port count: {len(ports)}")
     print(f"{label} canonical external port count: {len(canonical)}")
     for port, terminal in canonical:
-        print(
-            f"{label} external port: "
-            f"terminal={terminal!r} "
-            f"name={getattr(port, 'name', None)!r} "
-            f"center={tuple(map(float, port.center))} "
-            f"orientation={float(port.orientation)} "
-            f"width={float(port.width)} "
-            f"layer={port.layer!r}"
-        )
+        _report_port(f"{label} external port", port, terminal=terminal)
+
+    print(f"{label} simple unclassified port count: {len(simple_unclassified)}")
+    for port in simple_unclassified:
+        _report_port(f"{label} simple unclassified port", port)
 
     if full_ports:
         for port in ports:
-            print(
-                f"{label} raw port: "
-                f"name={getattr(port, 'name', None)!r} "
-                f"center={tuple(map(float, port.center))} "
-                f"orientation={float(port.orientation)} "
-                f"width={float(port.width)} "
-                f"layer={port.layer!r}"
-            )
+            _report_port(f"{label} raw port", port)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Inspect the installed GF180 NMOS/PMOS primitives used by the "
-            "parameterized transmission-gate generator."
+            "parameterized transmission-gate generator. Simple unclassified "
+            "ports are reported separately to identify supply/tie candidates."
         )
     )
     parser.add_argument("--full-ports", action="store_true")
