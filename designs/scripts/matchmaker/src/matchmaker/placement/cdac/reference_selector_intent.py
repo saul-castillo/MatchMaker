@@ -12,12 +12,11 @@ class ReferenceSelectorLayoutPolicy:
 
     Child sizes, access coordinates, layers, and default route widths are
     resolved from generated transmission-gate cells at runtime. The policy
-    supplies only spacing and clearance requirements.
+    supplies only child spacing, perimeter clearance, and optional width.
     """
 
     child_gap: float = 4.0
     channel_clearance: float = 2.0
-    channel_spacing: float = 1.0
     route_width: float | None = None
     alignment_tolerance: float = 1e-6
 
@@ -28,8 +27,6 @@ class ReferenceSelectorLayoutPolicy:
             raise ValueError(
                 "reference-selector channel_clearance must be non-negative"
             )
-        if self.channel_spacing <= 0:
-            raise ValueError("reference-selector channel_spacing must be positive")
         if self.route_width is not None and self.route_width <= 0:
             raise ValueError("reference-selector route_width must be positive")
         if self.alignment_tolerance < 0:
