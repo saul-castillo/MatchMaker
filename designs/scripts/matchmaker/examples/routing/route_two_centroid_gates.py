@@ -18,7 +18,7 @@ from matchmaker.placement.mos.mos_centroid_placement_builder import (
 )
 from matchmaker.routing.intents.net_intent import NetConstraintProfile, NetIntent
 from matchmaker.routing.planners.two_terminal_net_planner import (
-    plan_two_terminal_net,
+    plan_two_terminal_net_with_report,
 )
 from matchmaker.routing.routers.route_plan_executor import execute_route_plan
 from matchmaker.specs.mos_device_spec import MosDeviceSpec
@@ -28,12 +28,18 @@ from matchmaker.verification.netlist.connectivity_assertions import (
 )
 
 
-CELL_NAME = "nfet_centroid_gate_route_demo"
-SOURCE_INSTANCE = "A0"
-TARGET_INSTANCE = "A1"
+DEFAULT_CELL_NAME = "nfet_centroid_gate_route_demo"
+DEFAULT_SOURCE_INSTANCE = "A0"
+DEFAULT_TARGET_INSTANCE = "A1"
 
 
-def build_routed_demo():
+def build_routed_demo(
+    *,
+    cell_name: str = DEFAULT_CELL_NAME,
+    source_instance: str = DEFAULT_SOURCE_INSTANCE,
+    target_instance: str = DEFAULT_TARGET_INSTANCE,
+    strategy_preference: str = "auto",
+):
     gf180.activate()
 
     nfet_a = MosDeviceSpec(
@@ -52,7 +58,7 @@ def build_routed_demo():
     )
 
     placement_intent = MosCentroidArrayIntent(
-        cell_name=CELL_NAME,
+        cell_name=cell_name,
         device_a=nfet_a,
         device_b=nfet_b,
         rows=2,
@@ -67,36 +73,45 @@ def build_routed_demo():
     )
 
     net_intent = NetIntent(
-        name="A_gate_pair",
+        name=f"{source_instance}_{target_instance}_gate_pair",
         terminals=(
-            TerminalRef(SOURCE_INSTANCE, "gate"),
-            TerminalRef(TARGET_INSTANCE, "gate"),
+            TerminalRef(source_instance, "gate"),
+            TerminalRef(target_instance, "gate"),
         ),
         constraints=NetConstraintProfile(
             width_class="signal",
             avoid_obstacles=True,
             obstacle_clearance=1.0,
         ),
+        strategy_preference=strategy_preference,
     )
-    route_plan = plan_two_terminal_net(
+    planning = plan_two_terminal_net_with_report(
         intent=net_intent,
         physical_design=physical_design,
     )
-    executed = execute_route_plan(component=top, plan=route_plan)
-    return top, physical_design, net_intent, executed
+    executed = execute_route_plan(component=top, plan=planning.plan)
+    return top, physical_design, net_intent, planning, executed
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Generate, logically route, DRC, extract, and connectivity-check "
-            "the centroid routing demo."
+            "one pair of centroid-array MOS gates."
         )
     )
     parser.add_argument(
         "--designs-root",
         type=Path,
         default=Path(os.environ.get("DESIGNS_ROOT", "/foss/designs")),
+    )
+    parser.add_argument("--cell-name", default=DEFAULT_CELL_NAME)
+    parser.add_argument("--source-instance", default=DEFAULT_SOURCE_INSTANCE)
+    parser.add_argument("--target-instance", default=DEFAULT_TARGET_INSTANCE)
+    parser.add_argument(
+        "--strategy",
+        choices=("auto", "straight", "manhattan", "dogleg"),
+        default="auto",
     )
     parser.add_argument(
         "--skip-verification",
@@ -105,9 +120,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    top, physical_design, net_intent, executed = build_routed_demo()
+    top, physical_design, net_intent, planning, executed = build_routed_demo(
+        cell_name=args.cell_name,
+        source_instance=args.source_instance,
+        target_instance=args.target_instance,
+        strategy_preference=args.strategy,
+    )
     route_plan = executed.plan
-    paths = create_core_analog_cell_paths(args.designs_root, CELL_NAME)
+    paths = create_core_analog_cell_paths(args.designs_root, args.cell_name)
     top.write_gds(str(paths.final_gds))
 
     print(
@@ -118,15 +138,24 @@ def main() -> int:
         )
     )
     print(f"route strategy: {route_plan.strategy}")
-    print(f"straight-route blockers: {route_plan.blockers or '(none)'}")
+    print(f"direct-route blockers: {route_plan.blockers or '(none)'}")
     print(f"actual source access: {route_plan.selected_access_point_names[0]}")
     print(f"actual target access: {route_plan.selected_access_point_names[1]}")
-    print(f"detour direction: {route_plan.channel_direction or '(none)'}")
-    print(f"detour channel coordinate: {route_plan.channel_coordinate}")
+    print(f"channel direction: {route_plan.channel_direction or '(none)'}")
+    print(f"channel coordinate: {route_plan.channel_coordinate}")
+    print(
+        "route points: "
+        + " -> ".join(
+            str(segment.start) for segment in route_plan.segments
+        )
+        + f" -> {route_plan.segments[-1].end}"
+    )
     print(f"route length: {route_plan.metrics.total_length}")
     print(f"route bends: {route_plan.metrics.bend_count}")
     print(f"route width: {route_plan.metrics.resolved_width}")
     print(f"route estimated cost: {route_plan.metrics.estimated_cost}")
+    print(f"feasible route candidates: {len(planning.dispatch.candidates)}")
+    print(f"rejected route candidates: {len(planning.dispatch.rejections)}")
     print(f"physical instances: {len(physical_design.instances)}")
     print(f"physical access points: {len(physical_design.access_points)}")
     print(f"GDS: {paths.final_gds}")
@@ -135,17 +164,17 @@ def main() -> int:
         return 0
 
     endpoint_cell_names = (
-        physical_design.instance(SOURCE_INSTANCE).cell_name,
-        physical_design.instance(TARGET_INSTANCE).cell_name,
+        physical_design.instance(args.source_instance).cell_name,
+        physical_design.instance(args.target_instance).cell_name,
     )
     verification = verify_generated_cell(
         designs_root=args.designs_root,
-        cell_name=CELL_NAME,
+        cell_name=args.cell_name,
         connectivity_expectation=SharedNetConnectivityExpectation(
             expected_subcircuit_names=endpoint_cell_names,
             description=(
-                f"{SOURCE_INSTANCE}.gate connected only to "
-                f"{TARGET_INSTANCE}.gate"
+                f"{args.source_instance}.gate connected only to "
+                f"{args.target_instance}.gate"
             ),
         ),
     )

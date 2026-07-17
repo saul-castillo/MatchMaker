@@ -1,17 +1,27 @@
-"""Pure geometric, access-selection, and route-plan compilation."""
+"""Pure routing strategies, dispatch, and route-plan compilation."""
 
-from matchmaker.routing.planners.two_terminal_access_selector import (
-    AccessSelection,
+from matchmaker.routing.planners.route_candidate import (
+    CandidateRejection,
+    RouteCandidate,
     RoutePlanningError,
-    select_two_terminal_access,
+    StrategyDispatchResult,
 )
 from matchmaker.routing.planners.two_terminal_net_planner import (
+    TwoTerminalPlanningResult,
     plan_two_terminal_net,
+    plan_two_terminal_net_with_report,
+)
+from matchmaker.routing.planners.two_terminal_strategy_dispatcher import (
+    dispatch_two_terminal_routes,
 )
 
 __all__ = [
-    "AccessSelection",
+    "CandidateRejection",
+    "RouteCandidate",
     "RoutePlanningError",
+    "StrategyDispatchResult",
+    "TwoTerminalPlanningResult",
+    "dispatch_two_terminal_routes",
     "plan_two_terminal_net",
-    "select_two_terminal_access",
+    "plan_two_terminal_net_with_report",
 ]

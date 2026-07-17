@@ -1,3 +1,1 @@
-"""
-Routing intent, planning, port-access, and physical route execution.
-"""
+"""Logical routing intent, pure planning, route-plan IR, and execution."""
