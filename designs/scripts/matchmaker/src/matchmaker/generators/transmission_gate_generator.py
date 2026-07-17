@@ -1,13 +1,15 @@
 from dataclasses import dataclass
 
+from matchmaker.design.transmission_gate_naming import (
+    NMOS_INSTANCE_NAME,
+    PMOS_INSTANCE_NAME,
+)
 from matchmaker.physical.gf180_mos_access import gf180_mos_external_port_name
 from matchmaker.physical.models import PhysicalDesignSnapshot
 from matchmaker.physical.transmission_gate_snapshot import (
     create_transmission_gate_device_snapshot,
 )
 from matchmaker.placement.cdac.transmission_gate_builder import (
-    NMOS_INSTANCE_NAME,
-    PMOS_INSTANCE_NAME,
     build_transmission_gate_device_placement,
 )
 from matchmaker.placement.cdac.transmission_gate_intent import (
