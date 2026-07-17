@@ -8,9 +8,6 @@ from matchmaker.generators.transmission_gate_generator import (
     GeneratedTransmissionGate,
     generate_transmission_gate,
 )
-from matchmaker.generators.transmission_gate_public_ports import (
-    ensure_transmission_gate_control_ports,
-)
 from matchmaker.physical.models import PhysicalDesignSnapshot
 from matchmaker.physical.reference_selector_snapshot import (
     create_reference_selector_child_snapshot,
@@ -154,14 +151,6 @@ def generate_reference_selector(
             policy=intent.vss_switch_policy,
         )
     )
-    ensure_transmission_gate_control_ports(
-        vref_switch,
-        directions=("N", "S"),
-    )
-    ensure_transmission_gate_control_ports(
-        vss_switch,
-        directions=("N", "S"),
-    )
 
     placement = build_reference_selector_child_placement(
         intent=intent,
@@ -170,9 +159,7 @@ def generate_reference_selector(
     )
     physical_design = create_reference_selector_child_snapshot(
         placement,
-        access_policy=TransmissionGateCellAccessPolicy(
-            directions=("W", "E", "N", "S")
-        ),
+        access_policy=TransmissionGateCellAccessPolicy(directions=("W", "E")),
     )
     routes = plan_reference_selector_topology(
         intent=intent,
