@@ -130,6 +130,24 @@ def _route_plan(
     )
 
 
+def _perimeter_points(
+    *,
+    first: AccessPoint,
+    second: AccessPoint,
+    left_channel: float,
+    right_channel: float,
+    horizontal_channel: float,
+) -> tuple[tuple[float, float], ...]:
+    return (
+        first.center,
+        (left_channel, first.center[1]),
+        (left_channel, horizontal_channel),
+        (right_channel, horizontal_channel),
+        (right_channel, second.center[1]),
+        second.center,
+    )
+
+
 def plan_reference_selector_topology(
     *,
     intent: ReferenceSelectorLayoutIntent,
@@ -137,9 +155,9 @@ def plan_reference_selector_topology(
 ) -> ReferenceSelectorRouteBundle:
     """Plan the common output and complementary control topology.
 
-    Control routes first leave each child through horizontal gate accesses. Their
-    vertical channel legs therefore remain outside child bboxes instead of
-    crossing the generated MOS interiors.
+    The complementary controls use opposite perimeter channels. Both routes leave
+    through outward-facing horizontal gate accesses, so no vertical leg crosses a
+    child transmission-gate envelope and no narrow center fold is introduced.
     """
 
     vref_instance = physical_design.instance(VREF_SWITCH_INSTANCE_NAME)
@@ -196,29 +214,28 @@ def plan_reference_selector_topology(
         first=vref_select,
         second=vss_select,
     )
-    perimeter_offset = intent.policy.channel_clearance + select_width / 2.0
-    left_channel = vref_instance.bbox.xmin - perimeter_offset
-    right_channel = vss_instance.bbox.xmax + perimeter_offset
+    select_offset = intent.policy.channel_clearance + select_width / 2.0
+    select_left = vref_instance.bbox.xmin - select_offset
+    select_right = vss_instance.bbox.xmax + select_offset
     top_channel = (
-        max(vref_instance.bbox.ymax, vss_instance.bbox.ymax) + perimeter_offset
+        max(vref_instance.bbox.ymax, vss_instance.bbox.ymax) + select_offset
     )
     select_plan = _route_plan(
         net_name=SELECT_NET_NAME,
         first=vref_select,
         second=vss_select,
-        points=(
-            vref_select.center,
-            (left_channel, vref_select.center[1]),
-            (left_channel, top_channel),
-            (right_channel, top_channel),
-            (right_channel, vss_select.center[1]),
-            vss_select.center,
+        points=_perimeter_points(
+            first=vref_select,
+            second=vss_select,
+            left_channel=select_left,
+            right_channel=select_right,
+            horizontal_channel=top_channel,
         ),
         intent=intent,
         strategy="reference_selector_north_perimeter_control",
         detail=(
             f"north perimeter channel y={top_channel}, "
-            f"x={left_channel}..{right_channel}"
+            f"x={select_left}..{select_right}"
         ),
     )
 
@@ -226,59 +243,41 @@ def plan_reference_selector_topology(
         physical_design,
         instance_name=VREF_SWITCH_INSTANCE_NAME,
         terminal_name="control_bar",
-        child_port_name="control_bar_E",
+        child_port_name="control_bar_W",
     )
     vss_select_bar = _access(
         physical_design,
         instance_name=VSS_SWITCH_INSTANCE_NAME,
         terminal_name="control",
-        child_port_name="control_W",
+        child_port_name="control_E",
     )
     select_bar_width = _resolved_width(
         intent=intent,
         first=vref_select_bar,
         second=vss_select_bar,
     )
-    child_gap = vss_instance.bbox.xmin - vref_instance.bbox.xmax
-    required_corridor = select_bar_width + intent.policy.channel_spacing
-    if child_gap <= required_corridor:
-        raise RuntimeError(
-            "reference-selector child gap cannot support the inner control corridor: "
-            f"gap={child_gap}, required>{required_corridor}"
-        )
-    available_edge_clearance = (child_gap - required_corridor) / 2.0
-    inner_clearance = min(
-        intent.policy.channel_clearance,
-        available_edge_clearance,
-    )
-    left_inner_channel = (
-        vref_instance.bbox.xmax + inner_clearance + select_bar_width / 2.0
-    )
-    right_inner_channel = (
-        vss_instance.bbox.xmin - inner_clearance - select_bar_width / 2.0
-    )
+    select_bar_offset = intent.policy.channel_clearance + select_bar_width / 2.0
+    select_bar_left = vref_instance.bbox.xmin - select_bar_offset
+    select_bar_right = vss_instance.bbox.xmax + select_bar_offset
     bottom_channel = (
-        min(vref_instance.bbox.ymin, vss_instance.bbox.ymin)
-        - intent.policy.channel_clearance
-        - select_bar_width / 2.0
+        min(vref_instance.bbox.ymin, vss_instance.bbox.ymin) - select_bar_offset
     )
     select_bar_plan = _route_plan(
         net_name=SELECT_BAR_NET_NAME,
         first=vref_select_bar,
         second=vss_select_bar,
-        points=(
-            vref_select_bar.center,
-            (left_inner_channel, vref_select_bar.center[1]),
-            (left_inner_channel, bottom_channel),
-            (right_inner_channel, bottom_channel),
-            (right_inner_channel, vss_select_bar.center[1]),
-            vss_select_bar.center,
+        points=_perimeter_points(
+            first=vref_select_bar,
+            second=vss_select_bar,
+            left_channel=select_bar_left,
+            right_channel=select_bar_right,
+            horizontal_channel=bottom_channel,
         ),
         intent=intent,
-        strategy="reference_selector_south_inner_control",
+        strategy="reference_selector_south_perimeter_control",
         detail=(
-            f"south channel y={bottom_channel}, inner corridor "
-            f"x={left_inner_channel}..{right_inner_channel}"
+            f"south perimeter channel y={bottom_channel}, "
+            f"x={select_bar_left}..{select_bar_right}"
         ),
     )
 
