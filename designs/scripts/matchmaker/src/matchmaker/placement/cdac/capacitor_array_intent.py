@@ -3,6 +3,7 @@ from typing import Literal
 
 from matchmaker.design.circuit_manifest import CircuitManifest
 from matchmaker.placement.core.orientation_policy import OrientationPolicy
+from matchmaker.placement.core.spacing_policy import TileSpacingPolicy
 from matchmaker.specs.banked_cdac_spec import BankedCdacSpec
 
 
@@ -24,6 +25,7 @@ class CdacCapacitorArrayIntent:
     orientation_policy: OrientationPolicy = field(
         default_factory=lambda: OrientationPolicy(kind="all_r0")
     )
+    spacing_policy: TileSpacingPolicy = field(default_factory=TileSpacingPolicy)
 
     def __post_init__(self) -> None:
         if self.manifest.cell_name != self.spec.cell_name:
