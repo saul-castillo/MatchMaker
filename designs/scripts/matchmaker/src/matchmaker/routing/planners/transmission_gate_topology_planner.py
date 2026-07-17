@@ -1,12 +1,12 @@
 from dataclasses import dataclass
 from math import isclose
 
-from matchmaker.physical.gf180_mos_access import gf180_mos_external_port_name
-from matchmaker.physical.models import AccessPoint, PhysicalDesignSnapshot, TerminalRef
-from matchmaker.placement.cdac.transmission_gate_builder import (
+from matchmaker.design.transmission_gate_naming import (
     NMOS_INSTANCE_NAME,
     PMOS_INSTANCE_NAME,
 )
+from matchmaker.physical.gf180_mos_access import gf180_mos_external_port_name
+from matchmaker.physical.models import AccessPoint, PhysicalDesignSnapshot, TerminalRef
 from matchmaker.placement.cdac.transmission_gate_intent import (
     TransmissionGateLayoutIntent,
 )
