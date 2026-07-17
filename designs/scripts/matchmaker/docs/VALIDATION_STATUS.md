@@ -129,22 +129,71 @@ PMOS canonical simple ports: 16
 
 For both devices, simple `gate_*`, `source_*`, and `drain_*` accesses are on the runtime metal layer reported as `(36, 0)`. Their E/W access widths are 0.5 µm. The source/drain vertical offsets differ between NMOS and PMOS by the same 2.0 µm, so one derived PMOS translation can align both parallel signal nets.
 
-The simple `well_*` ports are on well-definition layers, observed as `(204, 0)` for the NMOS and `(21, 0)` for the PMOS. They are physical bulk boundaries, not yet accepted as routed `VSS` or `VDD` metal ports. Supply semantics remain blocked until simple unclassified tie/substrate-tap exports are inspected.
+The simple `well_*` ports are on well-definition layers, observed as `(204, 0)` for the NMOS and `(21, 0)` for the PMOS. They are physical bulk boundaries, not routed `VSS` or `VDD` metal ports. The supplied concise diagnostic output did not expose an additional simple unclassified metal tie/substrate-tap port, so supply semantics remain deliberately unassigned.
 
-The diagnostic also showed that installed gLayout accepts `with_tie`, `with_dummy`, `with_substrate_tap`, routing-metal, and tie-layer options. Those controls must remain typed primitive/layout policy, not hidden builder literals.
+### Generated base transmission gate
 
-### Next transmission-gate checkpoint
-
-Pull the latest PR #5 branch and run:
+Command:
 
 ```bash
-python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
 python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
 ```
 
-The first command now prints simple unclassified ports separately to identify metal tie/substrate-tap candidates. The second command attempts the typed base transmission-gate placement, runtime MOS snapshot, parallel input/output plans, public input/output/control ports, GDS generation, and Magic DRC.
+Observed on 2026-07-17 in `/foss`:
 
-No generated transmission-gate geometry, DRC result, extraction result, or supply-port assignment is claimed until that output is observed.
+```text
+generated cell: gf180_cdac_base_transmission_gate_demo
+requested switch dimensions: nmos=(W=4.0, L=0.28), pmos=(W=8.0, L=0.28)
+generated bbox: (-16.48, -11.565) to (11.49, 10.065)
+physical instances: 2
+physical access points: 32
+routing obstacles: 2
+public ports:
+  input_W, output_W, control_W, control_bar_W
+  input_E, output_E, control_E, control_bar_E
+
+input route:
+  accesses: NMOS__source_E, PMOS__source_W
+  points: (-7.92, 2.395) -> (5.425, 2.395)
+  length: 13.345
+  width: 0.5
+  layer: (36, 0)
+
+output route:
+  accesses: NMOS__drain_E, PMOS__drain_W
+  points: (-7.92, 3.195) -> (5.425, 3.195)
+  length: 13.345
+  width: 0.5
+  layer: (36, 0)
+
+DRC passed: True
+DRC violations: 0
+```
+
+The GDS was visually inspected. It shows separated NMOS and PMOS primitive envelopes with two parallel horizontal signal straps between the inward source and drain accesses. This proves deterministic geometry generation and DRC legality. It does not yet prove that Magic extracts exactly two distinct shared signal nets.
+
+The run also emitted two non-electrical warnings: historical dummy-keyword aliases were probed, and the child cells remained unnamed in the GDS library. Both were subsequently repaired at the GF180 primitive adapter/child-cell naming boundaries.
+
+### Next transmission-gate checkpoint
+
+Pull the latest PR #5 branch and rerun:
+
+```bash
+python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
+```
+
+The command now runs Magic extraction and requires exactly two distinct shared nets whose participants are the generated NMOS and PMOS subcircuits. Required evidence:
+
+```text
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: True
+shared signal net count: 2
+pre-LVS checks passed: True
+```
+
+Supply-port assignment remains outside this checkpoint.
 
 ## Current demonstrated boundary
 
@@ -165,14 +214,14 @@ stable capacitor PlacementResult bindings
 canonical capacitor PhysicalDesignSnapshot
 4 x 4 GF180 MIM array with zero DRC violations
 installed NMOS/PMOS signatures, bboxes, and simple external ports inspected
+generated base transmission-gate geometry with zero DRC violations
 ```
 
 Not yet demonstrated:
 
 ```text
-generated transmission-gate geometry or DRC
 metal VDD/VSS access for the transmission gate
-transmission-gate extraction and two-net connectivity
+transmission-gate extraction and exact two-net connectivity
 reference-selector hierarchy
 complete CDAC placement
 routed VOUT or bank nets
