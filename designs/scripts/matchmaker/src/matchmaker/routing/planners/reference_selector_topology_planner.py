@@ -52,6 +52,19 @@ def _access(
     return matches[0]
 
 
+def _resolved_width(
+    *,
+    intent: ReferenceSelectorLayoutIntent,
+    first: AccessPoint,
+    second: AccessPoint,
+) -> float:
+    return (
+        float(intent.policy.route_width)
+        if intent.policy.route_width is not None
+        else min(first.width, second.width)
+    )
+
+
 def _segments_from_points(
     *,
     points: tuple[tuple[float, float], ...],
@@ -84,11 +97,7 @@ def _route_plan(
             f"selector net {net_name} endpoints use different layers: "
             f"{first.layer!r} vs {second.layer!r}"
         )
-    width = (
-        float(intent.policy.route_width)
-        if intent.policy.route_width is not None
-        else min(first.width, second.width)
-    )
+    width = _resolved_width(intent=intent, first=first, second=second)
     segments = _segments_from_points(points=points, layer=first.layer, width=width)
     metrics = RouteMetrics.from_geometry(
         segments=segments,
@@ -115,7 +124,7 @@ def _route_plan(
         provenance=(
             "typed ReferenceSelectorLayoutIntent",
             "stable generated transmission-gate child bindings",
-            "runtime child-cell access coordinates and layers",
+            "runtime child-cell access coordinates, widths, layers, and bboxes",
             detail,
         ),
     )
@@ -126,7 +135,17 @@ def plan_reference_selector_topology(
     intent: ReferenceSelectorLayoutIntent,
     physical_design: PhysicalDesignSnapshot,
 ) -> ReferenceSelectorRouteBundle:
-    """Plan the common output and complementary control topology."""
+    """Plan the common output and complementary control topology.
+
+    Control routes first leave each child through horizontal gate accesses. Their
+    vertical channel legs therefore remain outside child bboxes instead of
+    crossing the generated MOS interiors.
+    """
+
+    vref_instance = physical_design.instance(VREF_SWITCH_INSTANCE_NAME)
+    vss_instance = physical_design.instance(VSS_SWITCH_INSTANCE_NAME)
+    if vref_instance.bbox.xmax > vss_instance.bbox.xmin:
+        raise RuntimeError("reference-selector child bboxes overlap or are reversed")
 
     vref_output = _access(
         physical_design,
@@ -164,17 +183,24 @@ def plan_reference_selector_topology(
         physical_design,
         instance_name=VREF_SWITCH_INSTANCE_NAME,
         terminal_name="control",
-        child_port_name="control_N",
+        child_port_name="control_W",
     )
     vss_select = _access(
         physical_design,
         instance_name=VSS_SWITCH_INSTANCE_NAME,
         terminal_name="control_bar",
-        child_port_name="control_bar_N",
+        child_port_name="control_bar_E",
     )
+    select_width = _resolved_width(
+        intent=intent,
+        first=vref_select,
+        second=vss_select,
+    )
+    perimeter_offset = intent.policy.channel_clearance + select_width / 2.0
+    left_channel = vref_instance.bbox.xmin - perimeter_offset
+    right_channel = vss_instance.bbox.xmax + perimeter_offset
     top_channel = (
-        max(instance.bbox.ymax for instance in physical_design.instances.values())
-        + intent.policy.channel_clearance
+        max(vref_instance.bbox.ymax, vss_instance.bbox.ymax) + perimeter_offset
     )
     select_plan = _route_plan(
         net_name=SELECT_NET_NAME,
@@ -182,30 +208,59 @@ def plan_reference_selector_topology(
         second=vss_select,
         points=(
             vref_select.center,
-            (vref_select.center[0], top_channel),
-            (vss_select.center[0], top_channel),
+            (left_channel, vref_select.center[1]),
+            (left_channel, top_channel),
+            (right_channel, top_channel),
+            (right_channel, vss_select.center[1]),
             vss_select.center,
         ),
         intent=intent,
-        strategy="reference_selector_north_control_channel",
-        detail=f"north control channel at y={top_channel}",
+        strategy="reference_selector_north_perimeter_control",
+        detail=(
+            f"north perimeter channel y={top_channel}, "
+            f"x={left_channel}..{right_channel}"
+        ),
     )
 
     vref_select_bar = _access(
         physical_design,
         instance_name=VREF_SWITCH_INSTANCE_NAME,
         terminal_name="control_bar",
-        child_port_name="control_bar_S",
+        child_port_name="control_bar_E",
     )
     vss_select_bar = _access(
         physical_design,
         instance_name=VSS_SWITCH_INSTANCE_NAME,
         terminal_name="control",
-        child_port_name="control_S",
+        child_port_name="control_W",
+    )
+    select_bar_width = _resolved_width(
+        intent=intent,
+        first=vref_select_bar,
+        second=vss_select_bar,
+    )
+    child_gap = vss_instance.bbox.xmin - vref_instance.bbox.xmax
+    required_corridor = select_bar_width + intent.policy.channel_spacing
+    if child_gap <= required_corridor:
+        raise RuntimeError(
+            "reference-selector child gap cannot support the inner control corridor: "
+            f"gap={child_gap}, required>{required_corridor}"
+        )
+    available_edge_clearance = (child_gap - required_corridor) / 2.0
+    inner_clearance = min(
+        intent.policy.channel_clearance,
+        available_edge_clearance,
+    )
+    left_inner_channel = (
+        vref_instance.bbox.xmax + inner_clearance + select_bar_width / 2.0
+    )
+    right_inner_channel = (
+        vss_instance.bbox.xmin - inner_clearance - select_bar_width / 2.0
     )
     bottom_channel = (
-        min(instance.bbox.ymin for instance in physical_design.instances.values())
+        min(vref_instance.bbox.ymin, vss_instance.bbox.ymin)
         - intent.policy.channel_clearance
+        - select_bar_width / 2.0
     )
     select_bar_plan = _route_plan(
         net_name=SELECT_BAR_NET_NAME,
@@ -213,13 +268,18 @@ def plan_reference_selector_topology(
         second=vss_select_bar,
         points=(
             vref_select_bar.center,
-            (vref_select_bar.center[0], bottom_channel),
-            (vss_select_bar.center[0], bottom_channel),
+            (left_inner_channel, vref_select_bar.center[1]),
+            (left_inner_channel, bottom_channel),
+            (right_inner_channel, bottom_channel),
+            (right_inner_channel, vss_select_bar.center[1]),
             vss_select_bar.center,
         ),
         intent=intent,
-        strategy="reference_selector_south_control_channel",
-        detail=f"south control channel at y={bottom_channel}",
+        strategy="reference_selector_south_inner_control",
+        detail=(
+            f"south channel y={bottom_channel}, inner corridor "
+            f"x={left_inner_channel}..{right_inner_channel}"
+        ),
     )
 
     return ReferenceSelectorRouteBundle(
