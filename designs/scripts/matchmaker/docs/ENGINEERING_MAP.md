@@ -162,6 +162,7 @@ capacitor-array geometry builder
 canonical capacitor access adapter
 capacitor PhysicalDesignSnapshot
 GDS and zero-violation Magic DRC
+transmission-gate NMOS/PMOS diagnostic entrypoint
 ```
 
 ## Active transmission-gate checkpoint
