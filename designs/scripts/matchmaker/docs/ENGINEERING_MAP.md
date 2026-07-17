@@ -280,7 +280,7 @@ VSS TG NMOS gate   <- SELECT_BAR
 VSS TG PMOS gate   <- SELECT
 ```
 
-The north/south channel coordinates, route layers, widths, and public-port locations are derived from child bboxes and runtime ports. No selector coordinate or metal layer is hard-coded.
+The child gap, north/south channel coordinates, route layers, widths, and public-port locations are derived from typed policy, child bboxes, and runtime ports. No selector coordinate or metal layer is hard-coded.
 
 ### Active `/foss` checkpoint
 
