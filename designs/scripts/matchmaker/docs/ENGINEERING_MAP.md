@@ -9,11 +9,11 @@ base: main
 branch: feature/cdac-layout-foundation
 PR: #5, draft
 PR #1-#4: merged
-active checkpoint: repaired B0 reference selector
-merge boundary: B0 selector DRC + extraction + exact connectivity
+active checkpoint: final B0 reference-selector rerun
+merge boundary: selector DRC + extraction + exact connectivity
 ```
 
-PR #5 intentionally stops after the repaired B0 selector is physically validated. Scaled selectors and complete CDAC assembly belong in the next branch.
+PR #5 intentionally stops after the final B0 selector topology is physically validated. Scaled selectors and complete CDAC assembly belong in the next branch.
 
 ## Source of truth
 
@@ -91,9 +91,7 @@ placement/core/
   Tile, PlacementPlan, PlacedReferenceBinding, PlacementResult
 
 placement/cdac/capacitor_array_*.py
-  CdacCapacitorArrayIntent
-  compile_cdac_capacitor_array_plan
-  build_cdac_capacitor_array
+  compile and build algorithmic capacitor-array placement
 
 placement/cdac/transmission_gate_*.py
   TransmissionGateLayoutPolicy, TransmissionGateLayoutIntent
@@ -108,12 +106,10 @@ physical/models.py
   RoutingObstacle, PhysicalDesignSnapshot
 
 physical/cdac_capacitor_snapshot.py
-  Gf180MimExternalAccessPolicy
-  create_cdac_capacitor_array_physical_design_snapshot
+  canonical GF180 MIM top/bottom access adapter
 
 physical/gf180_mos_access.py
-  Gf180MosExternalAccessPolicy
-  classify_gf180_mos_external_port_name
+  canonical GF180 MOS gate/source/drain/bulk access adapter
 
 physical/transmission_gate_snapshot.py
   create_transmission_gate_device_snapshot
@@ -134,8 +130,7 @@ generators/reference_selector_generator.py
   GeneratedReferenceSelector, generate_reference_selector
 
 verification/netlist/shared_net_multiplicity.py
-  SharedNetMultiplicityExpectation
-  evaluate_extracted_shared_net_multiplicity
+  exact participant-multiset and shared-net-count assertions
 ```
 
 `CircuitManifest` is compiled from typed specs without consulting schematics. New device-family placement returns stable `PlacementResult` bindings. `PhysicalDesignSnapshot.access_points_for(...)` is the supported logical-to-physical bridge.
@@ -183,7 +178,7 @@ pre-LVS checks: passed
 
 `well_*` ports are physical well boundaries, not accepted VDD/VSS metal accesses. Supply semantics remain unresolved rather than guessed.
 
-## B0 reference selector architecture
+## B0 reference-selector architecture
 
 The selector is hierarchical: two independently generated base transmission gates are placed side-by-side. No MOS geometry is duplicated in selector code.
 
@@ -197,18 +192,30 @@ VREF_TG control_bar + VSS_TG control -> SELECT_BAR
 
 Three ordinary `RoutePlan` objects are emitted and mechanically executed.
 
-### Failed first topology
+### Discarded topology 1: internal vertical escapes
 
-The first physical attempt selected `control_N/S` and `control_bar_N/S` ports, then immediately escaped vertically. Those vertical legs crossed child-device interiors. Result:
+The first attempt used `control_N/S` and `control_bar_N/S`, then escaped vertically. The vertical legs crossed child-device interiors.
 
 ```text
 Magic DRC: failed
 violations: 6
 ```
 
-Preserve this failure. A DRC-clean child does not imply that routing from an internal cardinal access is safe in every direction.
+Preserve this failure: a DRC-clean child does not imply every cardinal access has a safe escape direction.
 
-### Replacement topology
+### Discarded topology 2: central folded corridor
+
+The second attempt routed `SELECT` on the north perimeter but sent `SELECT_BAR` through a narrow central corridor and south channel. It passed:
+
+```text
+Magic DRC: zero violations
+Magic extraction: passed
+exact shared selector nets: 3
+```
+
+It was still rejected. The close parallel vertical legs and short bottom U-turn added unnecessary local coupling, length, asymmetry, and geometric fragility. Passing DRC/connectivity is necessary but not sufficient for accepting analog topology.
+
+### Accepted topology: opposite perimeter controls
 
 ```text
 COMMON
@@ -222,24 +229,16 @@ SELECT
   -> VSS control_bar_E
 
 SELECT_BAR
-  VREF control_bar_E
-  -> width-checked central corridor
-  -> south channel below both child bboxes
-  -> central corridor
-  -> VSS control_W
+  VREF control_bar_W
+  -> west escape outside VREF child bbox
+  -> south perimeter channel
+  -> east escape outside VSS child bbox
+  -> VSS control_E
 ```
 
-All channel centerlines are derived from:
+Both complementary controls now use the same topology class on opposite sides. All channel centerlines are derived from runtime child bboxes, runtime endpoint widths, `ReferenceSelectorLayoutPolicy.channel_clearance`, and optional `route_width`. The obsolete central-corridor spacing parameter was removed.
 
-```text
-runtime child bboxes
-runtime endpoint widths
-ReferenceSelectorLayoutPolicy.channel_clearance
-ReferenceSelectorLayoutPolicy.channel_spacing
-optional explicit route_width
-```
-
-No selector coordinate, layer, or primitive dimension is embedded in the planner. The planner fails explicitly if the child gap cannot support the central corridor.
+No selector coordinate, layer, primitive dimension, or route width is embedded in the planner. Overlapping/reversed child placement and layer mismatches fail explicitly.
 
 ## Final PR #5 checkpoint
 
@@ -252,6 +251,8 @@ python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.p
 Required result:
 
 ```text
+SELECT strategy: reference_selector_north_perimeter_control
+SELECT_BAR strategy: reference_selector_south_perimeter_control
 DRC passed: True
 DRC violations: 0
 extraction passed: True
@@ -289,24 +290,21 @@ After this physical result and passing CI, update `VALIDATION_STATUS.md`, mark P
 7. Adapters interpret primitive APIs once and copy runtime values.
 8. Executors do not invent routing policy.
 9. Examples contain no reusable policy.
-10. New placement returns stable bindings.
-11. New routing consumes `PhysicalDesignSnapshot`.
-12. Hard constraints reject before ranking.
-13. Unsupported cases fail explicitly.
-14. DRC never proves connectivity.
-15. Connectivity-changing work requires extraction or LVS.
-16. Live state stays here; physical evidence stays in `VALIDATION_STATUS.md`.
+10. DRC never proves connectivity or analog quality.
+11. Connectivity-changing work requires extraction or LVS.
+12. Unsupported cases fail explicitly.
+13. Live state stays here; physical evidence stays in `VALIDATION_STATUS.md`.
 
 ## Known debt
 
 ```text
 legacy MOS placement lacks PlacementResult
-metal supply access for generated MOS cells is unresolved
+metal VDD/VSS access for generated transmission gates is unresolved
 committed routes are not typed resources
 routing is primarily two-terminal and same-layer
 GF180 width/layer/via rules lack a resolver
 via planning and execution are absent
-complete CDAC topology planning is absent
+multi-terminal CDAC topology planning is absent
 independent schematic LVS has not passed
 stable logical identity is not preserved through extraction end-to-end
 ```
