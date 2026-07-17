@@ -9,11 +9,11 @@ base: main
 branch: feature/cdac-layout-foundation
 PR: #5, draft
 PR #1-#4: merged
-CI: passing
+CI: passing through the capacitor adapter checkpoint
 active checkpoint: parameterized transmission-gate generator
 ```
 
-The 4 by 4 GF180 MIM capacitor array is now generated with 16 stable instances, 128 canonical accesses, 16 obstacles, and zero Magic DRC violations.
+The 4 by 4 GF180 MIM capacitor array is generated with 16 stable instances, 128 canonical accesses, 16 obstacles, and zero Magic DRC violations.
 
 ## Source of truth
 
@@ -166,11 +166,13 @@ GDS and zero-violation Magic DRC
 
 ## Active transmission-gate checkpoint
 
-Current command:
+Current diagnostic:
 
 ```bash
 python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
 ```
+
+It uses the typed reset-switch spec and reports only exact two-token external MOS ports by default. `--full-ports` is available only for debugging. The diagnostic does not define generator policy.
 
 Sequence:
 
