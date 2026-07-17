@@ -47,7 +47,7 @@ class TransmissionGateCellAccessTests(unittest.TestCase):
 
 
 class ReferenceSelectorTopologyTests(unittest.TestCase):
-    def _intent(self, *, route_width=None, child_gap=4.0):
+    def _intent(self, *, route_width=None):
         return ReferenceSelectorLayoutIntent(
             spec=ReferenceSelectorSpec(
                 name="selector",
@@ -58,9 +58,8 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
                 ),
             ),
             policy=ReferenceSelectorLayoutPolicy(
-                child_gap=child_gap,
+                child_gap=4.0,
                 channel_clearance=2.5,
-                channel_spacing=1.0,
                 route_width=route_width,
             ),
         )
@@ -72,8 +71,8 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
             (VSS_SWITCH_INSTANCE_NAME, "output", "output_W", (right_xmin, 0.0), 0.9, second_layer or layer),
             (VREF_SWITCH_INSTANCE_NAME, "control", "control_W", (-2.0, 1.0), 0.5, layer),
             (VSS_SWITCH_INSTANCE_NAME, "control_bar", "control_bar_E", (right_xmin + 2.0, -2.0), 0.6, layer),
-            (VREF_SWITCH_INSTANCE_NAME, "control_bar", "control_bar_E", (-0.5, -1.0), 0.55, layer),
-            (VSS_SWITCH_INSTANCE_NAME, "control", "control_W", (right_xmin + 0.5, -2.0), 0.65, layer),
+            (VREF_SWITCH_INSTANCE_NAME, "control_bar", "control_bar_W", (-2.0, -1.0), 0.55, layer),
+            (VSS_SWITCH_INSTANCE_NAME, "control", "control_E", (right_xmin + 2.0, -2.0), 0.65, layer),
         )
         access_points = {}
         terminal_access = {}
@@ -121,7 +120,7 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
             obstacles=(),
         )
 
-    def test_runtime_geometry_drives_external_selector_channels(self):
+    def test_runtime_geometry_drives_opposite_perimeter_channels(self):
         routes = plan_reference_selector_topology(
             intent=self._intent(),
             physical_design=self._snapshot(),
@@ -136,13 +135,17 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
 
         north_horizontal = routes.select_plan.segments[2]
         self.assertEqual(north_horizontal.start[1], 6.75)
-        self.assertLess(routes.select_plan.segments[1].start[0], -3.0)
-        self.assertGreater(routes.select_plan.segments[3].start[0], 7.0)
+        self.assertLess(north_horizontal.start[0], -3.0)
+        self.assertGreater(north_horizontal.end[0], 7.0)
 
         south_horizontal = routes.select_bar_plan.segments[2]
         self.assertEqual(south_horizontal.start[1], -6.775)
-        self.assertGreater(south_horizontal.start[0], 0.0)
-        self.assertLess(south_horizontal.end[0], 4.0)
+        self.assertLess(south_horizontal.start[0], -3.0)
+        self.assertGreater(south_horizontal.end[0], 7.0)
+        self.assertEqual(
+            routes.select_bar_plan.strategy,
+            "reference_selector_south_perimeter_control",
+        )
 
     def test_explicit_width_is_policy(self):
         routes = plan_reference_selector_topology(
@@ -160,11 +163,11 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
                 physical_design=self._snapshot(second_layer=(99, 0)),
             )
 
-    def test_insufficient_inner_corridor_fails_explicitly(self):
+    def test_overlapping_children_fail_explicitly(self):
         with self.assertRaises(RuntimeError):
             plan_reference_selector_topology(
                 intent=self._intent(),
-                physical_design=self._snapshot(right_xmin=1.0),
+                physical_design=self._snapshot(right_xmin=-0.5),
             )
 
 
