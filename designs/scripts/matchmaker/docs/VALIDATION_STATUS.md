@@ -144,64 +144,103 @@ pre-LVS checks passed: True
 
 The two extracted shared nets contain exactly the generated NMOS and PMOS subcircuits as their complete participant multiset. This closes the base TG as a validated pre-LVS generator primitive. Supply connection and independent schematic LVS remain separate gates.
 
-### B0 reference selector: failed first routing topology
+## B0 reference-selector iterations
 
-Command:
+### Attempt 1: internal vertical escape — failed
 
-```bash
-python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
-```
-
-Observed on 2026-07-17 before repair:
+Observed on 2026-07-17:
 
 ```text
-generated bbox: (-29.97, -13.065) to (29.97, 13.065)
 child instances: 2
 physical accesses: 24
 obstacles: 2
-public ports: vref_W, vss_E, common_N, select_N, select_bar_S
 
 COMMON:
   VREF_TG__output_E -> VSS_TG__output_W
-  length: 15.345
-  bends: 0
 
 SELECT:
   VREF_TG__control_N -> VSS_TG__control_bar_N
-  length: 80.975
-  bends: 2
 
 SELECT_BAR:
   VREF_TG__control_bar_S -> VSS_TG__control_S
-  length: 33.225
-  bends: 2
 
 DRC passed: False
 DRC violations: 6
 ```
 
-The GDS showed that the `SELECT` and `SELECT_BAR` vertical escape legs passed through child-device interiors before reaching their external channels. This failure is retained as design evidence.
+The vertical control legs crossed child-device interiors before reaching external channels. This topology is rejected.
 
-### B0 reference selector: repaired topology pending physical rerun
+### Attempt 2: north perimeter plus folded center/south route — electrically passed, rejected physically
 
-The replacement planner uses only horizontal child gate accesses before any vertical channel leg:
+Observed on 2026-07-17:
+
+```text
+COMMON strategy: reference_selector_direct_common
+COMMON points:
+  (-6.425, 3.945) -> (8.92, 3.945)
+COMMON length: 15.345
+COMMON bends: 0
+
+SELECT strategy: reference_selector_north_perimeter_control
+SELECT accesses:
+  VREF_TG__control_W -> VSS_TG__control_bar_E
+SELECT points:
+  (-22.48, -2.445)
+  -> (-32.22, -2.445)
+  -> (-32.22, 13.065)
+  -> (32.22, 13.065)
+  -> (32.22, -6.445)
+  -> (24.975, -6.445)
+SELECT length: 116.445
+SELECT bends: 4
+
+SELECT_BAR strategy: reference_selector_south_inner_control
+SELECT_BAR accesses:
+  VREF_TG__control_bar_E -> VSS_TG__control_W
+SELECT_BAR points:
+  (-6.995, -6.445)
+  -> (-0.5, -6.445)
+  -> (-0.5, -13.065)
+  -> (0.5, -13.065)
+  -> (0.5, -2.445)
+  -> (9.49, -2.445)
+SELECT_BAR length: 33.725
+SELECT_BAR bends: 4
+
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: True
+shared selector net count: 3
+pre-LVS checks passed: True
+```
+
+The GDS showed two closely spaced central vertical legs connected by a short bottom U-turn. Although legal and correctly connected, this topology is rejected because it adds unnecessary local coupling, asymmetry, route folding, and sensitivity to child spacing.
+
+### Accepted design pending final physical rerun
+
+The planner now uses matching opposite perimeter routes:
 
 ```text
 COMMON
   direct output_E -> output_W
 
 SELECT
-  control_W -> west external escape
-  -> north perimeter channel
-  -> east external escape -> control_bar_E
+  VREF control_W
+  -> west external escape
+  -> north perimeter
+  -> east external escape
+  -> VSS control_bar_E
 
 SELECT_BAR
-  control_bar_E -> derived central corridor
-  -> south external channel
-  -> central corridor -> control_W
+  VREF control_bar_W
+  -> west external escape
+  -> south perimeter
+  -> east external escape
+  -> VSS control_E
 ```
 
-Coordinates are derived from child bboxes, runtime endpoint widths, and typed clearance/spacing policy. The planner fails if the child gap cannot support the central corridor. Pure tests and source/example compilation pass at the repaired branch head.
+The central corridor and its spacing parameter were removed. Coordinates remain derived from runtime child bboxes, endpoint widths, and typed perimeter clearance.
 
 Run:
 
@@ -214,6 +253,8 @@ python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.p
 Required evidence before PR #5 can merge:
 
 ```text
+SELECT strategy: reference_selector_north_perimeter_control
+SELECT_BAR strategy: reference_selector_south_perimeter_control
 DRC passed: True
 DRC violations: 0
 extraction passed: True
@@ -235,13 +276,15 @@ canonical MIM and MOS physical adapters
 base transmission gate with zero DRC violations
 base transmission-gate extraction
 exact two-signal-net connectivity
+B0 selector hierarchical generation
+B0 selector exact three-net connectivity on discarded folded topology
 straight, Manhattan, and external-dogleg routing regressions
 ```
 
 Not yet demonstrated:
 
 ```text
-repaired B0 selector DRC/extraction/connectivity
+accepted symmetric-perimeter B0 selector physical rerun
 scaled B1/B2/B3 selectors
 metal VDD/VSS access for generated MOS cells
 complete CDAC placement
