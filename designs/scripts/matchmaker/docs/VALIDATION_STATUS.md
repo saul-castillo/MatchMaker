@@ -201,7 +201,7 @@ SELECT_BAR
   -> central corridor -> control_W
 ```
 
-Coordinates are derived from child bboxes, runtime endpoint widths, and typed clearance/spacing policy. The planner fails if the child gap cannot support the central corridor.
+Coordinates are derived from child bboxes, runtime endpoint widths, and typed clearance/spacing policy. The planner fails if the child gap cannot support the central corridor. Pure tests and source/example compilation pass at the repaired branch head.
 
 Run:
 
