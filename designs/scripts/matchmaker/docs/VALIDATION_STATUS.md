@@ -22,9 +22,11 @@ A0.gate -> A2.gate
   exact endpoint connectivity: passed
 ```
 
-Failure history to preserve: earlier direct and layer-only routes were DRC-clean but electrically connected intervening devices. DRC never substitutes for extraction or LVS.
+Earlier direct and layer-only routes were DRC-clean but electrically connected intervening devices. DRC never substitutes for extraction or LVS.
 
 ## PR #5 CDAC foundation
+
+All observations below were made on 2026-07-17 in `/foss` using `gf180mcuD`.
 
 ### Installed GF180 MIM primitive
 
@@ -33,8 +35,6 @@ Command:
 ```bash
 python scripts/matchmaker/examples/diagnostics/inspect_gf180_mim_capacitor.py
 ```
-
-Observed on 2026-07-17:
 
 ```text
 requested unit: 5 µm x 5 µm
@@ -53,17 +53,15 @@ bottom_met_E/N/S/W
   observed width: 6.2
 ```
 
-The other 256 ports are nested primitive implementation exports and are excluded. Layer, width, center, and orientation are read from runtime ports.
+The other 256 ports are nested implementation exports and are excluded. The adapter reads center, orientation, width, and layer from runtime geometry.
 
-### Generated 4-bit capacitor array
+### Generated reviewed capacitor array
 
 Command:
 
 ```bash
 python scripts/matchmaker/examples/placement/generate_cdac_capacitor_array.py
 ```
-
-Observed on 2026-07-17:
 
 ```text
 grid: 4 x 4
@@ -80,7 +78,7 @@ DRC passed: True
 DRC violations: 0
 ```
 
-The GDS was visually inspected and showed a regular, uniformly spaced array. Capacitor plates are not routed; no extracted-connectivity or LVS claim is made.
+The GDS was visually inspected and showed a regular, uniformly spaced array. Capacitor plates are not routed, so no extracted-connectivity or LVS claim is made.
 
 ### Installed GF180 MOS primitives
 
@@ -89,8 +87,6 @@ Command:
 ```bash
 python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
 ```
-
-Observed for the base/reset switch:
 
 ```text
 NMOS: W=4.0 µm, L=0.28 µm
@@ -104,17 +100,15 @@ PMOS: W=8.0 µm, L=0.28 µm
   canonical ports: 16
 ```
 
-Both devices expose cardinal gate/source/drain accesses on the observed runtime metal layer `(36, 0)`. E/W signal widths are 0.5 µm. `well_*` is on well-definition layers and is not accepted as VDD/VSS metal access.
+Both devices expose cardinal gate/source/drain accesses on the observed runtime metal layer `(36, 0)`. E/W signal widths are 0.5 µm. `well_*` ports are well-definition boundaries and are not accepted as VDD/VSS metal accesses.
 
-### Generated base transmission gate
+### Generated base/reset transmission gate
 
 Command:
 
 ```bash
 python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
 ```
-
-Observed on 2026-07-17:
 
 ```text
 generated bbox: (-16.48, -11.565) to (11.49, 10.065)
@@ -144,124 +138,110 @@ pre-LVS checks passed: True
 
 The two extracted shared nets contain exactly the generated NMOS and PMOS subcircuits as their complete participant multiset. This closes the base TG as a validated pre-LVS generator primitive. Supply connection and independent schematic LVS remain separate gates.
 
-## B0 reference-selector iterations
+## B0 reference-selector validation history
 
-### Attempt 1: internal vertical escape — failed
+Command for all three attempts:
 
-Observed on 2026-07-17:
+```bash
+python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
+```
+
+The selector hierarchy contains two independently generated base TG child cells and three intended shared nets: `COMMON`, `SELECT`, and `SELECT_BAR`.
+
+### Attempt 1: internal vertical escapes
 
 ```text
+generated bbox: (-29.97, -13.065) to (29.97, 13.065)
 child instances: 2
 physical accesses: 24
 obstacles: 2
+public ports: vref_W, vss_E, common_N, select_N, select_bar_S
 
 COMMON:
   VREF_TG__output_E -> VSS_TG__output_W
+  length: 15.345
+  bends: 0
 
 SELECT:
   VREF_TG__control_N -> VSS_TG__control_bar_N
+  length: 80.975
+  bends: 2
 
 SELECT_BAR:
   VREF_TG__control_bar_S -> VSS_TG__control_S
+  length: 33.225
+  bends: 2
 
 DRC passed: False
 DRC violations: 6
 ```
 
-The vertical control legs crossed child-device interiors before reaching external channels. This topology is rejected.
+Visual inspection showed the control-route vertical legs crossing child-device interiors before reaching their external channels.
 
-### Attempt 2: north perimeter plus folded center/south route — electrically passed, rejected physically
+### Attempt 2: folded central corridor
 
-Observed on 2026-07-17:
+```text
+COMMON: direct inner output strap
+SELECT: north perimeter route
+SELECT_BAR: central-gap route with two close vertical legs and a short bottom U-turn
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: True
+shared selector net count: 3
+pre-LVS checks passed: True
+```
+
+This attempt was electrically valid but rejected as final analog geometry. The center fold added unnecessary local coupling, length, asymmetry, and fragility.
+
+### Attempt 3: opposite perimeter controls
+
+Observed final run:
 
 ```text
 COMMON strategy: reference_selector_direct_common
-COMMON points:
-  (-6.425, 3.945) -> (8.92, 3.945)
 COMMON length: 15.345
 COMMON bends: 0
 
 SELECT strategy: reference_selector_north_perimeter_control
-SELECT accesses:
-  VREF_TG__control_W -> VSS_TG__control_bar_E
-SELECT points:
-  (-22.48, -2.445)
-  -> (-32.22, -2.445)
-  -> (-32.22, 13.065)
-  -> (32.22, 13.065)
-  -> (32.22, -6.445)
-  -> (24.975, -6.445)
+SELECT accesses: VREF_TG__control_W, VSS_TG__control_bar_E
 SELECT length: 116.445
 SELECT bends: 4
+SELECT width: 0.5
+SELECT layer: (36, 0)
 
-SELECT_BAR strategy: reference_selector_south_inner_control
-SELECT_BAR accesses:
-  VREF_TG__control_bar_E -> VSS_TG__control_W
-SELECT_BAR points:
-  (-6.995, -6.445)
-  -> (-0.5, -6.445)
-  -> (-0.5, -13.065)
-  -> (0.5, -13.065)
-  -> (0.5, -2.445)
-  -> (9.49, -2.445)
-SELECT_BAR length: 33.725
-SELECT_BAR bends: 4
-
-DRC passed: True
-DRC violations: 0
-extraction passed: True
-connectivity passed: True
-shared selector net count: 3
-pre-LVS checks passed: True
-```
-
-The GDS showed two closely spaced central vertical legs connected by a short bottom U-turn. Although legal and correctly connected, this topology is rejected because it adds unnecessary local coupling, asymmetry, route folding, and sensitivity to child spacing.
-
-### Accepted design pending final physical rerun
-
-The planner now uses matching opposite perimeter routes:
-
-```text
-COMMON
-  direct output_E -> output_W
-
-SELECT
-  VREF control_W
-  -> west external escape
-  -> north perimeter
-  -> east external escape
-  -> VSS control_bar_E
-
-SELECT_BAR
-  VREF control_bar_W
-  -> west external escape
-  -> south perimeter
-  -> east external escape
-  -> VSS control_E
-```
-
-The central corridor and its spacing parameter were removed. Coordinates remain derived from runtime child bboxes, endpoint widths, and typed perimeter clearance.
-
-Run:
-
-```bash
-git pull --ff-only
-source scripts/matchmaker/env/setup.sh
-python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
-```
-
-Required evidence before PR #5 can merge:
-
-```text
-SELECT strategy: reference_selector_north_perimeter_control
 SELECT_BAR strategy: reference_selector_south_perimeter_control
+SELECT_BAR accesses: VREF_TG__control_bar_W, VSS_TG__control_E
+SELECT_BAR length: 128.635
+SELECT bends: 4
+SELECT width: 0.5
+SELECT layer: (36, 0)
+
 DRC passed: True
 DRC violations: 0
 extraction passed: True
-connectivity passed: True
-shared selector net count: 3
-pre-LVS checks passed: True
+connectivity passed: False
+shared selector net count: 1
+pre-LVS checks passed: False
 ```
+
+The GDS was visually cleaner and symmetric, but only one shared child-level net was extracted. The two intended control nets were not recognized as shared selector nets. Therefore this selector is not validated and must not be treated as a reusable primitive.
+
+Likely access-direction issue to verify next:
+
+```text
+with nmos_side="left":
+  NMOS control outer access = W
+  PMOS control_bar outer access = E
+
+SELECT uses the proven outer pair:
+  VREF control_W -> VSS control_bar_E
+
+SELECT_BAR Attempt 3 used:
+  VREF control_bar_W -> VSS control_E
+```
+
+The latter pair points through the internal TG device arrangement rather than using the previously proven inter-child-gap accesses `VREF control_bar_E` and `VSS control_W`. This is a working hypothesis, not yet a proven root cause.
 
 ## Current demonstrated boundary
 
@@ -270,21 +250,21 @@ Validated:
 ```text
 typed generator hierarchy independent of Xschem
 parameterized 3/4/5-bit CDAC specifications
+schematic-independent CircuitManifest
+stable PlacementResult bindings
 algorithmic inversion-symmetric capacitor placement
 canonical MIM and MOS physical adapters
 4 x 4 MIM array with zero DRC violations
-base transmission gate with zero DRC violations
-base transmission-gate extraction
-exact two-signal-net connectivity
-B0 selector hierarchical generation
-B0 selector exact three-net connectivity on discarded folded topology
+base TG with zero DRC violations
+base TG extraction and exact two-signal-net connectivity
+hierarchical selector placement and reproducible route planning
 straight, Manhattan, and external-dogleg routing regressions
 ```
 
-Not yet demonstrated:
+Not validated:
 
 ```text
-accepted symmetric-perimeter B0 selector physical rerun
+B0 selector as a reusable primitive
 scaled B1/B2/B3 selectors
 metal VDD/VSS access for generated MOS cells
 complete CDAC placement
@@ -294,4 +274,25 @@ GF180 routing-rule and via resolution
 CDAC extraction/connectivity
 independent schematic-to-layout Netgen LVS
 PVT, mismatch, or extracted-parasitic simulation
+```
+
+## Next physical checkpoint
+
+After PR #5 merges, reproduce Attempts 2 and 3 on a new selector-connectivity branch. Inspect the extracted child pin participation, then replace the folded two-leg corridor with one central trunk using the electrically proven inter-child-gap access pair:
+
+```text
+VREF control_bar_E
+-> horizontal branch to a derived central x
+-> one vertical trunk
+-> horizontal branch to VSS control_W
+```
+
+Required acceptance remains:
+
+```text
+DRC violations: 0
+extraction passed: True
+shared selector net count: 3
+pre-LVS checks passed: True
+visual topology accepted
 ```
