@@ -213,9 +213,9 @@ SELECT layer: (36, 0)
 SELECT_BAR strategy: reference_selector_south_perimeter_control
 SELECT_BAR accesses: VREF_TG__control_bar_W, VSS_TG__control_E
 SELECT_BAR length: 128.635
-SELECT bends: 4
-SELECT width: 0.5
-SELECT layer: (36, 0)
+SELECT_BAR bends: 4
+SELECT_BAR width: 0.5
+SELECT_BAR layer: (36, 0)
 
 DRC passed: True
 DRC violations: 0
