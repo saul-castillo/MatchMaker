@@ -49,17 +49,12 @@ class ReferenceSelectorLayoutIntent:
         default_factory=lambda: TransmissionGateLayoutPolicy(nmos_side="left")
     )
     vss_switch_policy: TransmissionGateLayoutPolicy = field(
-        default_factory=lambda: TransmissionGateLayoutPolicy(nmos_side="right")
+        default_factory=lambda: TransmissionGateLayoutPolicy(nmos_side="left")
     )
 
     def __post_init__(self) -> None:
         if self.cell_name is not None and not self.cell_name:
             raise ValueError("reference-selector cell_name must be non-empty")
-        if self.vref_switch_policy.nmos_side == self.vss_switch_policy.nmos_side:
-            raise ValueError(
-                "reference-selector child switch policies must place NMOS devices "
-                "on opposite sides to support non-crossing control topology"
-            )
 
     @property
     def resolved_cell_name(self) -> str:
