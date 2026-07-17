@@ -8,6 +8,7 @@ from matchmaker.specs.transmission_gate_spec import TransmissionGateSpec
 
 
 HorizontalSide = Literal["W", "E"]
+CardinalDirection = Literal["N", "S", "E", "W"]
 
 
 @dataclass(frozen=True)
@@ -26,6 +27,7 @@ class TransmissionGateLayoutPolicy:
     inner_nmos_direction: HorizontalSide = "E"
     inner_pmos_direction: HorizontalSide = "W"
     external_directions: tuple[HorizontalSide, ...] = ("W", "E")
+    control_directions: tuple[CardinalDirection, ...] = ("W", "E")
     route_width: float | None = None
     alignment_tolerance: float = 1e-6
 
@@ -37,7 +39,13 @@ class TransmissionGateLayoutPolicy:
         if self.inner_nmos_direction == self.inner_pmos_direction:
             raise ValueError("inner NMOS and PMOS directions must face each other")
         if not self.external_directions:
-            raise ValueError("at least one external access direction is required")
+            raise ValueError("at least one external signal access direction is required")
+        if not self.control_directions:
+            raise ValueError("at least one control access direction is required")
+        if len(set(self.external_directions)) != len(self.external_directions):
+            raise ValueError("external signal access directions must be unique")
+        if len(set(self.control_directions)) != len(self.control_directions):
+            raise ValueError("control access directions must be unique")
         if self.route_width is not None and self.route_width <= 0:
             raise ValueError("explicit transmission-gate route width must be positive")
         if self.alignment_tolerance < 0:
