@@ -1,127 +1,298 @@
 # Validation status
 
-This file records physical evidence demonstrated in the Chipathon `/foss` environment. Architecture and development direction belong in `ENGINEERING_MAP.md`; decisions belong in ADRs.
+This file records physical evidence demonstrated in the Chipathon `/foss` environment. Architecture and development direction belong in `ENGINEERING_MAP.md`; durable decisions belong in ADRs.
 
-## Validated routing foundation
+## Merged routing foundation
 
-The merged foundation demonstrated:
+```text
+A0.gate -> A1.gate
+  strategy: blocked external dogleg
+  DRC violations: 0
+  extraction: passed
+  exact endpoint connectivity: passed
 
-- MatchMaker environment setup loads successfully.
-- Routing and verification unit tests pass.
-- The MOS centroid demo generates GDS successfully.
-- Logical `NetIntent(A0.gate, A1.gate)` automatically selects physical access.
-- The blocked direct path identifies `B0` and `B1`.
-- The planner selects outward `A0__gate_W` and `A1__gate_E` access.
-- The external same-layer dogleg runs outside the device row.
-- Promoted access was reduced from 21,520 hierarchy ports to 128 canonical MOS accesses across eight instances.
-- GF180 Magic DRC reports zero violations.
-- Magic extracts the routed layout to SPICE.
-- Extracted connectivity contains exactly the two intended A instances and no B instances.
-- The one-command flow reports `connectivity passed: True` and `pre-LVS checks passed: True`.
+A0.gate -> A2.gate
+  strategy: two-bend Manhattan Z route
+  route length: 44.8
+  route width: 0.5
+  feasible candidates: 4
+  rejected candidates: 110
+  DRC violations: 0
+  extraction: passed
+  exact endpoint connectivity: passed
+```
 
-Failure history: the original direct route and the first layer-only C route were DRC-clean but electrically connected the intervening B devices. This is the evidence behind the rule that DRC cannot substitute for extraction or LVS.
+Earlier direct and layer-only routes were DRC-clean but electrically connected intervening devices. DRC never substitutes for extraction or LVS.
 
-## PR #3 validation: modular strategy dispatch
+## PR #5 CDAC foundation
 
-Implementation includes:
+All observations below were made on 2026-07-17 in `/foss` using `gf180mcuD`.
 
-- common `RouteCandidate`, `CandidateRejection`, and `StrategyDispatchResult` models;
-- independent straight, Manhattan, and external-dogleg strategy modules;
-- deterministic dispatch, hard-limit filtering, deduplication, ranking, provenance, and rejection evidence;
-- same-layer non-inline L routes for perpendicular accesses;
-- same-layer non-inline Z routes for parallel accesses;
-- midpoint, obstacle-edge, and outer channel candidates;
-- outward endpoint-orientation checking;
-- full-polyline obstacle checking;
-- `plan_two_terminal_net_with_report(...)`;
-- a parameterized centroid routing example.
-
-GitHub Actions unit tests and Python compilation pass. The obsolete fixed-port intent, fixed-port planner/router, dogleg-specific executor, compatibility selector, and superseded tests were removed before merge.
-
-### Confirmed: blocked A0-to-A1 dogleg regression
+### Installed GF180 MIM primitive
 
 Command:
 
 ```bash
-python scripts/matchmaker/examples/routing/route_two_centroid_gates.py
+python scripts/matchmaker/examples/diagnostics/inspect_gf180_mim_capacitor.py
 ```
-
-Confirmed invariants:
 
 ```text
-logical terminals: A0.gate, A1.gate
-route strategy: dogleg
-actual source access: A0__gate_W
-actual target access: A1__gate_E
-DRC passed: True
-DRC violations: 0
-extraction passed: True
-connectivity passed: True
-pre-LVS checks passed: True
+requested unit: 5 µm x 5 µm
+actual bbox: 6.2 µm x 6.2 µm
+raw ports: 264
+canonical external ports: 8
+
+top_met_E/N/S/W
+  logical terminal: top
+  observed layer: (42, 0)
+  observed width: 5.0
+
+bottom_met_E/N/S/W
+  logical terminal: bottom
+  observed layer: (36, 0)
+  observed width: 6.2
 ```
 
-The modular dispatcher preserved the validated obstacle-aware dogleg and exact A0/A1 connectivity.
+The other 256 ports are nested implementation exports and are excluded. The adapter reads center, orientation, width, and layer from runtime geometry.
 
-### Confirmed: diagonal A0-to-A2 Manhattan regression
+### Generated reviewed capacitor array
 
 Command:
 
 ```bash
-python scripts/matchmaker/examples/routing/route_two_centroid_gates.py \
-  --cell-name nfet_centroid_diagonal_gate_route_demo \
-  --source-instance A0 \
-  --target-instance A2
+python scripts/matchmaker/examples/placement/generate_cdac_capacitor_array.py
 ```
 
-Observed result:
+```text
+grid: 4 x 4
+counts: B0=1, B1=2, B2=4, B3=8, TERM=1
+pattern:
+  B2 B2 B3 B3
+  B1 B0 B3 B3
+  B3 B3 TERM B1
+  B3 B3 B2 B2
+instances: 16
+canonical accesses: 128
+obstacles: 16
+DRC passed: True
+DRC violations: 0
+```
+
+The GDS was visually inspected and showed a regular, uniformly spaced array. Capacitor plates are not routed, so no extracted-connectivity or LVS claim is made.
+
+### Installed GF180 MOS primitives
+
+Command:
+
+```bash
+python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
+```
 
 ```text
-logical terminals: A0.gate, A2.gate
-route strategy: manhattan
-direct-route blockers: (none)
-actual source access: A0__gate_E
-actual target access: A2__gate_W
-route points: (-28.57, 13.26) -> (-20.08, 13.26) -> (-20.08, -13.26) -> (-10.29, -13.26)
-route length: 44.8
-route bends: 2
-route width: 0.5
-route estimated cost: 45.3
-feasible route candidates: 4
-rejected route candidates: 110
-physical instances: 8
-physical access points: 128
+NMOS: W=4.0 µm, L=0.28 µm
+  bbox: (-7.74, -10.065) to (7.74, 10.065)
+  raw ports: 2672
+  canonical ports: 16
+
+PMOS: W=8.0 µm, L=0.28 µm
+  bbox: (-5.245, -9.565) to (5.245, 9.565)
+  raw ports: 1392
+  canonical ports: 16
+```
+
+Both devices expose cardinal gate/source/drain accesses on the observed runtime metal layer `(36, 0)`. E/W signal widths are 0.5 µm. `well_*` ports are well-definition boundaries and are not accepted as VDD/VSS metal accesses.
+
+### Generated base/reset transmission gate
+
+Command:
+
+```bash
+python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
+```
+
+```text
+generated bbox: (-16.48, -11.565) to (11.49, 10.065)
+instances: 2
+canonical accesses: 32
+obstacles: 2
+
+input route:
+  NMOS__source_E -> PMOS__source_W
+  length: 13.345
+  width: 0.5
+  layer: (36, 0)
+
+output route:
+  NMOS__drain_E -> PMOS__drain_W
+  length: 13.345
+  width: 0.5
+  layer: (36, 0)
+
 DRC passed: True
 DRC violations: 0
 extraction passed: True
 connectivity passed: True
+shared signal net count: 2
 pre-LVS checks passed: True
 ```
 
-Extraction identified exactly the intended A0 and A2 instances. The generated GDS displayed the expected non-inline same-layer Z geometry.
+The two extracted shared nets contain exactly the generated NMOS and PMOS subcircuits as their complete participant multiset. This closes the base TG as a validated pre-LVS generator primitive. Supply connection and independent schematic LVS remain separate gates.
 
-## Current validated implementation boundary
+## B0 reference-selector validation history
 
-- deterministic MOS centroid placement;
-- typed read-only `PhysicalDesignSnapshot`;
-- filtered canonical MOS terminal access;
-- logical two-terminal net intent;
-- typed per-net and route-group constraints;
-- modular same-layer straight, Manhattan L/Z, and external-dogleg planning;
-- structured candidate and rejection reports;
-- common route-plan and metrics IR;
-- mechanical same-layer execution;
-- GF180 Magic DRC and extraction;
-- exact extracted-connectivity assertions;
-- Netgen LVS runner infrastructure.
+Command for all three attempts:
 
-## Not yet implemented or demonstrated
+```bash
+python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
+```
 
-- a passing independent schematic-to-layout Netgen LVS comparison;
-- committed routes as obstacles/resources;
-- PDK-resolved width classes and layer policies;
-- via planning and execution;
-- multi-terminal topology planning;
-- matched, differential, symmetry, shielding, and separation group planning;
-- congestion-aware graph search and rip-up/reroute;
-- stable logical instance identity through extraction;
-- capacitor/CDAC physical adapters and routing templates.
+The selector hierarchy contains two independently generated base TG child cells and three intended shared nets: `COMMON`, `SELECT`, and `SELECT_BAR`.
+
+### Attempt 1: internal vertical escapes
+
+```text
+generated bbox: (-29.97, -13.065) to (29.97, 13.065)
+child instances: 2
+physical accesses: 24
+obstacles: 2
+public ports: vref_W, vss_E, common_N, select_N, select_bar_S
+
+COMMON:
+  VREF_TG__output_E -> VSS_TG__output_W
+  length: 15.345
+  bends: 0
+
+SELECT:
+  VREF_TG__control_N -> VSS_TG__control_bar_N
+  length: 80.975
+  bends: 2
+
+SELECT_BAR:
+  VREF_TG__control_bar_S -> VSS_TG__control_S
+  length: 33.225
+  bends: 2
+
+DRC passed: False
+DRC violations: 6
+```
+
+Visual inspection showed the control-route vertical legs crossing child-device interiors before reaching their external channels.
+
+### Attempt 2: folded central corridor
+
+```text
+COMMON: direct inner output strap
+SELECT: north perimeter route
+SELECT_BAR: central-gap route with two close vertical legs and a short bottom U-turn
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: True
+shared selector net count: 3
+pre-LVS checks passed: True
+```
+
+This attempt was electrically valid but rejected as final analog geometry. The center fold added unnecessary local coupling, length, asymmetry, and fragility.
+
+### Attempt 3: opposite perimeter controls
+
+Observed final run:
+
+```text
+COMMON strategy: reference_selector_direct_common
+COMMON length: 15.345
+COMMON bends: 0
+
+SELECT strategy: reference_selector_north_perimeter_control
+SELECT accesses: VREF_TG__control_W, VSS_TG__control_bar_E
+SELECT length: 116.445
+SELECT bends: 4
+SELECT width: 0.5
+SELECT layer: (36, 0)
+
+SELECT_BAR strategy: reference_selector_south_perimeter_control
+SELECT_BAR accesses: VREF_TG__control_bar_W, VSS_TG__control_E
+SELECT_BAR length: 128.635
+SELECT_BAR bends: 4
+SELECT_BAR width: 0.5
+SELECT_BAR layer: (36, 0)
+
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: False
+shared selector net count: 1
+pre-LVS checks passed: False
+```
+
+The GDS was visually cleaner and symmetric, but only one shared child-level net was extracted. The two intended control nets were not recognized as shared selector nets. Therefore this selector is not validated and must not be treated as a reusable primitive.
+
+Likely access-direction issue to verify next:
+
+```text
+with nmos_side="left":
+  NMOS control outer access = W
+  PMOS control_bar outer access = E
+
+SELECT uses the proven outer pair:
+  VREF control_W -> VSS control_bar_E
+
+SELECT_BAR Attempt 3 used:
+  VREF control_bar_W -> VSS control_E
+```
+
+The latter pair points through the internal TG device arrangement rather than using the previously proven inter-child-gap accesses `VREF control_bar_E` and `VSS control_W`. This is a working hypothesis, not yet a proven root cause.
+
+## Current demonstrated boundary
+
+Validated:
+
+```text
+typed generator hierarchy independent of Xschem
+parameterized 3/4/5-bit CDAC specifications
+schematic-independent CircuitManifest
+stable PlacementResult bindings
+algorithmic inversion-symmetric capacitor placement
+canonical MIM and MOS physical adapters
+4 x 4 MIM array with zero DRC violations
+base TG with zero DRC violations
+base TG extraction and exact two-signal-net connectivity
+hierarchical selector placement and reproducible route planning
+straight, Manhattan, and external-dogleg routing regressions
+```
+
+Not validated:
+
+```text
+B0 selector as a reusable primitive
+scaled B1/B2/B3 selectors
+metal VDD/VSS access for generated MOS cells
+complete CDAC placement
+VOUT and bank routing
+committed routes as typed resources
+GF180 routing-rule and via resolution
+CDAC extraction/connectivity
+independent schematic-to-layout Netgen LVS
+PVT, mismatch, or extracted-parasitic simulation
+```
+
+## Next physical checkpoint
+
+After PR #5 merges, reproduce Attempts 2 and 3 on a new selector-connectivity branch. Inspect the extracted child pin participation, then replace the folded two-leg corridor with one central trunk using the electrically proven inter-child-gap access pair:
+
+```text
+VREF control_bar_E
+-> horizontal branch to a derived central x
+-> one vertical trunk
+-> horizontal branch to VSS control_W
+```
+
+Required acceptance remains:
+
+```text
+DRC violations: 0
+extraction passed: True
+shared selector net count: 3
+pre-LVS checks passed: True
+visual topology accepted
+```

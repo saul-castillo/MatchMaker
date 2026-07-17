@@ -1,359 +1,372 @@
 # MatchMaker Engineering Map
 
-This is the canonical live-state document for MatchMaker. Read it before changing the engine. It is optimized for a future coding agent or contributor who must recover the architecture, active APIs, validation boundary, known debt, and next step without reconstructing context from chat or commit history.
+This is the canonical live-state document for the engine. Read it before changing code. Update it instead of creating another handoff file. Detailed physical evidence belongs in `VALIDATION_STATUS.md`; durable architectural decisions belong in ADRs.
 
-## Read order
+## Current state
 
 ```text
-1. docs/ENGINEERING_MAP.md              current architecture and development state
-2. docs/VALIDATION_STATUS.md            physical evidence demonstrated in /foss
-3. docs/adr/*.md                         durable decisions and rejected alternatives
-4. the module being changed
-5. its tests
+base: main
+branch: feature/cdac-layout-foundation
+PR: #5
+PR #1-#4: merged
+CI: passing at the latest code head before this documentation update
+merge scope: validated CDAC layout foundation plus an explicitly unresolved B0 selector prototype
 ```
 
-Do not create another handoff or architecture summary. Update this file instead. `VALIDATION_STATUS.md` is the only place for detailed observed run output. ADRs are append-only decision records, not status documents.
-
-## Mission
-
-MatchMaker is a deterministic, constraint-driven analog layout synthesis engine for GF180 through gLayout. It must preserve electrical connectivity, analog matching intent, geometric constraints, and verification evidence while supporting reusable MOS arrays, switches, capacitors, CDACs, comparators, and larger analog cells.
-
-## Repository state at this document revision
+PR #5 must not claim a completed selector or completed CDAC. The validated merge boundary is:
 
 ```text
-base branch: main
-active branch: feature/manhattan-routing-dispatcher
-active PR: #3
-PR #1: routing and verification foundation, merged
-PR #2: logical net intent, access selection, and RoutePlan IR, merged
-PR #3: modular strategy dispatch and non-inline Manhattan routing, ready for review
+typed CDAC specifications and manifest
+parameterized capacitor placement
+generated GF180 MIM array with zero DRC violations
+generated base transmission gate with DRC, extraction, and exact connectivity
+selector hierarchy, planner, failure history, and reproducible failing checkpoint
 ```
 
-PR #3 has passed GitHub Actions, Python compilation, the original blocked A0-to-A1 dogleg regression, and the diagonal A0-to-A2 Manhattan regression in `/foss`.
+Scaled selectors, complete CDAC placement, CDAC routing, supplies, and LVS belong after PR #5.
 
-## Golden pipeline
+## Source of truth
+
+The generator never parses Xschem to decide layout.
 
 ```text
-high-level circuit/layout intent
--> typed device and placement intent
--> deterministic placement plan
--> placed GF180 geometry
--> PhysicalDesignSnapshot
--> NetIntent / RouteGroupIntent
--> routing strategy dispatch
--> RouteCandidate selection
--> RoutePlan
--> mechanical geometry execution
+typed generator specification
+-> CircuitManifest
+-> placement and routing generation
+-> generated layout/netlist
+-> independent schematic comparison during LVS
+```
+
+Schematics under `designs/libs/core_matchmaker/` are independent LVS references only. They are not hierarchy, sizing, placement, coordinate, access, or routing input.
+
+## Non-negotiable invariants
+
+1. Concrete values live only in typed specs, named presets, explicit policies, or PDK/device adapters.
+2. Algorithms do not hide bit counts, bank sizes, coordinates, primitive dimensions, port names, layers, widths, or spacing rules.
+3. Primitive port grammar is interpreted once in the matching adapter.
+4. Runtime geometry supplies centers, orientations, layers, widths, and envelopes.
+5. New placement returns stable `PlacementResult` bindings.
+6. Routing consumes typed `PhysicalDesignSnapshot` state and emits ordinary `RoutePlan` objects.
+7. Executors draw plans; they do not invent policy.
+8. Examples contain no reusable policy.
+9. DRC never proves connectivity or analog quality.
+10. Connectivity-changing work requires extraction or LVS evidence.
+11. Unsupported cases fail explicitly.
+12. Live state stays in this file; physical output stays in `VALIDATION_STATUS.md`.
+
+## Canonical pipeline
+
+```text
+typed intent
+-> device/hierarchy spec
+-> CircuitManifest
+-> placement intent and policy
+-> PlacementPlan
+-> geometry + PlacementResult
+-> device-specific PhysicalDesignSnapshot
+-> NetIntent / route-group / topology intent
+-> RouteCandidate / RoutePlan
+-> mechanical execution
 -> GDS
 -> Magic DRC
--> Magic extraction and connectivity assertion
--> Netgen LVS
--> targeted repair or accepted cell
+-> extraction and exact connectivity
+-> independent Netgen LVS
 ```
 
-Each major module owns one translation. No example, executor, or verification adapter may silently become a planner.
+Each module owns one translation.
 
-## Core routing principle
+## CDAC reference encoded by the generator
 
-Routing begins with logical connectivity, not fixed primitive ports.
+The reviewed GF180 preset is a parameterized instance of the generic banked-CDAC model:
 
 ```text
-NetIntent(A0.gate, A1.gate)
-+ NetConstraintProfile
-+ PhysicalDesignSnapshot
--> enumerate legal physical access points
--> generate candidates with independent strategies
--> reject hard-constraint violations
--> rank feasible candidates deterministically
--> compile the selected candidate into RoutePlan
--> execute resolved geometry
+MIM unit: 5 µm x 5 µm request
+B0: 1 unit,  NMOS 4 µm,  PMOS 8 µm
+B1: 2 units, NMOS 8 µm,  PMOS 16 µm
+B2: 4 units, NMOS 16 µm, PMOS 32 µm
+B3: 8 units, NMOS 32 µm, PMOS 64 µm
+termination: 1 unit
+reset TG: NMOS 4 µm, PMOS 8 µm
+MOS length: 0.28 µm
 ```
 
-A logical terminal such as `A0.gate` may expose several physical access points such as `A0__gate_E` and `A0__gate_W`. High-level callers must not select those physical accesses before placement context is evaluated.
+The specification and manifest compilers are tested with 3-, 4-, and 5-bit configurations so fixed four-bit assumptions cannot hide in algorithms.
 
-## Canonical data contracts
-
-### Logical intent
-
-File: `src/matchmaker/routing/intents/net_intent.py`
+## Code ownership map
 
 ```text
-NetIntent
-NetConstraintProfile
-RouteGroupIntent
-RouteGroupConstraintProfile
-```
+design/circuit_manifest.py
+  CircuitInstance, CircuitNet, CircuitManifest
 
-`NetIntent` names logical `TerminalRef` objects only. `NetConstraintProfile` currently carries semantic width class, optional explicit width, obstacle clearance, layer restrictions, maximum length/bends, cost weights, and priority.
+design/cdac_manifest_compiler.py
+  compile_banked_cdac_manifest
 
-Route-group types reserve matching, symmetry, shielding, separation, and equal bend/via requirements. Group planning is not implemented yet.
+design/transmission_gate_naming.py
+  stable NMOS/PMOS logical names
 
-### Physical state
+design/reference_selector_naming.py
+  stable child and net names
 
-Files:
-
-```text
-src/matchmaker/physical/models.py
-src/matchmaker/physical/mos_centroid_snapshot.py
-```
-
-Canonical models:
-
-```text
-TerminalRef
-AccessPoint
-PlacedInstance
-RoutingObstacle
-PhysicalDesignSnapshot
-```
-
-`PhysicalDesignSnapshot.access_points_for(TerminalRef(...))` is the supported bridge from electrical identity to physical choices. Routing code must not infer identity from reference order or store planning policy in `Component.info`.
-
-The MOS adapter filters nested gLayout hierarchy ports and retains canonical external gate/source/drain/bulk cardinal accesses. The validated eight-instance centroid exposes 128 routing access points instead of 21,520 unfiltered hierarchy ports.
-
-### Candidate and dispatch evidence
-
-Files:
-
-```text
-src/matchmaker/routing/planners/route_candidate.py
-src/matchmaker/routing/planners/two_terminal_strategy_dispatcher.py
-```
-
-Canonical models:
-
-```text
-RouteCandidate
-CandidateRejection
-StrategyDispatchResult
-RoutePlanningError
-```
-
-A candidate records selected access points, exact path points, layer, width, strategy, length, bend count, cost, blockers, channel information, and provenance. A dispatch result retains the selected candidate, every feasible candidate, and every rejection reason.
-
-### Route-plan IR
-
-File: `src/matchmaker/routing/plans/route_plan.py`
-
-```text
-RoutePlan
-RouteSegment
-ViaPlan
-RouteMetrics
-ConstraintCheck
-```
-
-A valid plan contains only nonzero Manhattan segments, internally consistent metrics, and no failed hard constraint.
-
-### Execution
-
-File: `src/matchmaker/routing/routers/route_plan_executor.py`
-
-The executor draws an already resolved `RoutePlan`. It does not choose terminals, access points, topology, strategy, channel, width, or layer. Via execution is not implemented and must fail explicitly.
-
-## Current strategy architecture
-
-Directory: `src/matchmaker/routing/planners/`
-
-```text
-straight_route_strategy.py
-  clear same-layer aligned route
-
-manhattan_route_strategy.py
-  non-inline L routes for perpendicular accesses
-  non-inline Z routes for parallel accesses
-  midpoint, obstacle-edge, and outer channel candidates
-
-dogleg_route_strategy.py
-  aligned external channel around a blocked row or column
-
-rectilinear_path.py
-  shared Manhattan geometry, orientation, and obstacle utilities
-
-two_terminal_strategy_dispatcher.py
-  access-pair enumeration
-  common layer eligibility
-  strategy invocation
-  hard-limit filtering
-  candidate deduplication
-  deterministic ranking
-  structured rejection evidence
-
-two_terminal_net_planner.py
-  selected RouteCandidate -> RoutePlan
-```
-
-Strategy registration is static. Do not add dynamic plugin discovery until several stable strategy families exist and registration itself becomes a demonstrated problem.
-
-## Device-specific extension model
-
-A single universal analog router is not the target. MatchMaker uses common contracts with device adapters and specialized strategy/topology modules.
-
-### Physical adapters
-
-Adapters translate placed device structure into logical terminals, physical access choices, obstacles, and local keepouts.
-
-```text
-MOS adapter -> gate/source/drain/bulk
-capacitor adapter -> top/bottom plate
-resistor adapter -> terminal accesses
-transmission-gate adapter -> input/output/control
-comparator adapter -> input/output/clock/supply
-```
-
-Device construction details must not leak into the generic dispatcher.
-
-### Routing strategies and topology modules
-
-Planned examples:
-
-```text
-RectilinearGraphStrategy
-DifferentialPairStrategy
-MatchedRouteGroupStrategy
-MatchedBusStrategy
-ShieldedNetStrategy
-CdacRoutingTemplateStrategy
-```
-
-They must consume common intent/snapshot contracts and emit common candidate/plan types. Specialized analog topology is allowed; specialized execution paths are not.
-
-### PDK rule adapters
-
-Semantic intent such as `signal`, `high_current`, or `high_voltage` must eventually resolve through a GF180 routing-rule adapter into concrete layers, widths, spacing, via types, via arrays, and enclosures. Generic intent and strategy code must not hard-code PDK rule numbers.
-
-## Package ownership
-
-```text
 specs/
-  PDK-independent device specifications
+  MosDeviceSpec
+  MimCapacitorSpec
+  TransmissionGateSpec
+  ReferenceSelectorSpec
+  CdacBankSpec
+  BankedCdacSpec
+  generic scaled-binary compiler
+  reviewed GF180 4-bit preset
 
 placement/core/
-  reusable tile, grid, plan, orientation, and spacing infrastructure
+  Tile, PlacementPlan, PlacedReferenceBinding, PlacementResult
 
-placement/mos/
-  MOS intent compilation, dummy policy, binding, and placement
+placement/cdac/capacitor_array_*.py
+  algorithmic inversion-symmetric array planning and generation
 
-physical/
-  placed instances, logical terminals, physical accesses, obstacles, snapshots
+placement/cdac/transmission_gate_*.py
+  runtime-derived NMOS/PMOS placement
+
+placement/cdac/reference_selector_*.py
+  side-by-side placement of two generated TG children
 
 primitives/
-  PDK/gLayout primitive construction
+  GF180 MIM and MOS factory adapters
 
-routing/intents/
-  logical net and route-group requests
+physical/cdac_capacitor_snapshot.py
+  canonical MIM top/bottom access filtering
 
-routing/planners/
-  pure strategies, dispatch, obstacle checks, candidate/plan compilation
+physical/gf180_mos_access.py
+  canonical gate/source/drain/bulk access filtering
 
-routing/plans/
-  common execution-ready route IR and metrics
+physical/transmission_gate_snapshot.py
+  NMOS/PMOS child snapshot
 
-routing/routers/
-  mechanical geometry execution
+physical/reference_selector_snapshot.py
+  generated-TG child snapshot
 
-verification/
-  DRC, extraction, connectivity assertions, LVS, report parsing
+routing/planners/transmission_gate_topology_planner.py
+  two parallel signal-net RoutePlans
 
-outputs/
-  generated-cell paths and artifact conventions
+routing/planners/reference_selector_topology_planner.py
+  COMMON, SELECT, SELECT_BAR RoutePlans
 
-examples/
-  package wiring only; no reusable engine policy
+generators/transmission_gate_generator.py
+  end-to-end TG generation
+
+generators/reference_selector_generator.py
+  hierarchical selector generation
+
+verification/netlist/shared_net_multiplicity.py
+  exact participant-multiset and shared-net-count assertions
 ```
 
-## Architectural invariants
+## Physically validated tonight
 
-1. Logical terminals are separate from physical access points.
-2. Hard constraints reject candidates before soft-cost ranking.
-3. Pure planners do not mutate gdsfactory or gLayout components.
-4. Executors do not invent routing policy.
-5. Examples contain no reusable engine logic.
-6. New routing work consumes `PhysicalDesignSnapshot`.
-7. New strategies emit common `RouteCandidate` and `RoutePlan` types.
-8. Candidates and plans retain metrics, blockers, constraint evidence, and provenance.
-9. Unsupported cases fail explicitly rather than drawing unsafe fallback geometry.
-10. DRC success never proves electrical correctness.
-11. Every connectivity-changing integration test requires extraction or LVS evidence.
-12. PDK rule numbers belong in PDK adapters or detailed physical planning.
-13. Major architecture changes require an ADR.
-14. Live architecture/status belongs here; observed physical evidence belongs in `VALIDATION_STATUS.md`.
+### GF180 MIM adapter and capacitor array
 
-## Physically validated regressions
-
-Detailed commands and observed output are in `VALIDATION_STATUS.md`.
-
-### Blocked A0-to-A1 dogleg
+Observed primitive contract:
 
 ```text
-logical terminals: A0.gate, A1.gate
-selected access: A0__gate_W, A1__gate_E
-blockers: B0, B1
-strategy: dogleg
-GF180 Magic DRC: zero violations
+requested unit: 5 µm x 5 µm
+actual primitive bbox: 6.2 µm x 6.2 µm
+raw ports: 264
+canonical ports: 8
+  top_met_{N,E,S,W} -> top
+  bottom_met_{N,E,S,W} -> bottom
+```
+
+The other 256 nested implementation ports are excluded. The generated reviewed array is:
+
+```text
+grid: 4 x 4
+counts: B0=1, B1=2, B2=4, B3=8, TERM=1
+instances: 16
+canonical accesses: 128
+obstacles: 16
+Magic DRC violations: 0
+```
+
+Capacitor plates are not routed yet.
+
+### GF180 MOS adapter and base transmission gate
+
+Observed base/reset device contract:
+
+```text
+NMOS W=4 µm, L=0.28 µm
+  raw ports: 2672
+  canonical ports: 16
+
+PMOS W=8 µm, L=0.28 µm
+  raw ports: 1392
+  canonical ports: 16
+```
+
+Simple `gate/source/drain` cardinal accesses share one runtime metal layer. One runtime-derived PMOS translation aligns the source and drain signal nets.
+
+Generated TG result:
+
+```text
+instances: 2
+canonical accesses: 32
+input RoutePlan: NMOS source -> PMOS source
+output RoutePlan: NMOS drain -> PMOS drain
+Magic DRC violations: 0
 Magic extraction: passed
-connectivity: exactly A0 and A1
-pre-LVS gate: passed
+exact shared signal nets: 2
+pre-LVS checks: passed
 ```
 
-Failure history to preserve: the original direct route and layer-only C route were DRC-clean but electrically connected B0 and B1. This is why extraction/connectivity gating is mandatory.
+This closes the base/reset TG as a validated pre-LVS generator primitive.
 
-### Diagonal A0-to-A2 Manhattan route
+`well_*` ports are well-definition boundaries, not accepted VDD/VSS metal accesses. Supply semantics remain unresolved rather than guessed.
+
+## B0 reference-selector work and failure history
+
+The selector is hierarchical: two generated base TG cells are placed side-by-side. Selector code does not duplicate MOS geometry.
+
+Logical topology:
 
 ```text
-logical terminals: A0.gate, A2.gate
-selected access: A0__gate_E, A2__gate_W
-strategy: two-bend Manhattan Z route
-length: 44.8
-width: 0.5
-feasible candidates: 4
-rejected candidates: 110
-GF180 Magic DRC: zero violations
+VREF_TG input -> VREF
+VSS_TG input  -> VSS
+VREF_TG output + VSS_TG output -> COMMON
+VREF_TG control + VSS_TG control_bar -> SELECT
+VREF_TG control_bar + VSS_TG control -> SELECT_BAR
+```
+
+Three ordinary `RoutePlan` objects are emitted and mechanically executed.
+
+### Attempt 1: internal vertical escapes
+
+Used `control_N/S` and `control_bar_N/S`, then escaped vertically through child interiors.
+
+```text
+Magic DRC: failed
+violations: 6
+```
+
+Lesson: a valid cardinal access is not automatically safe in its nominal orientation once embedded hierarchically.
+
+### Attempt 2: north perimeter plus folded central corridor
+
+```text
+COMMON: direct inner output strap
+SELECT: north perimeter
+SELECT_BAR: two close central vertical legs plus a short south U-turn
+Magic DRC violations: 0
 Magic extraction: passed
-connectivity: exactly A0 and A2
-pre-LVS gate: passed
+exact shared selector nets: 3
+pre-LVS checks: passed
 ```
 
-## Known implementation debt
+This was electrically valid but rejected as final analog geometry because the fold added local coupling, unnecessary length, asymmetry, and fragility.
 
-- Placement returns a component rather than a typed `PlacementResult`.
-- Snapshot construction still relies partly on placement/reference binding assumptions.
-- Routing is two-terminal and same-layer only.
-- Committed routes are not represented as obstacles or routing resources.
-- Width classes and layer policies are not resolved through a GF180 rule adapter.
-- Via planning and execution are not implemented.
-- Multi-terminal topology planning is not implemented.
-- Matching, differential symmetry, shielding, and separation are typed but not planned.
-- Congestion-aware graph search and rip-up/reroute are not implemented.
-- Independent schematic-to-layout Netgen LVS has not passed.
-- Extracted instance identity is inferred from generated subcircuit names rather than stable logical IDs.
-
-## Next development order
-
-Do not jump directly to multi-net A* routing.
+### Attempt 3: opposite north/south perimeter controls
 
 ```text
-1. squash-merge PR #3
-2. represent committed routes as typed obstacles/resources in PhysicalDesignSnapshot
-3. add GF180 routing-rule resolution for width, layer, spacing, and via selection
-4. add PDK-aware via planning and execution
-5. add multi-terminal topology planning
-6. add matched/differential route-group planners
-7. add coarse rectilinear graph search and congestion accounting
-8. add an independent schematic LVS regression
-9. add capacitor/CDAC physical adapters and routing templates
+COMMON: direct inner output strap
+SELECT: control_W -> north perimeter -> control_bar_E
+SELECT_BAR: control_bar_W -> south perimeter -> control_E
+
+SELECT length: 116.445, bends: 4
+SELECT_BAR length: 128.635, bends: 4
+Magic DRC violations: 0
+Magic extraction: passed
+shared selector net count: 1
+connectivity: failed
+pre-LVS checks: failed
 ```
 
-## Required change discipline
+Only one shared child-level net was extracted, consistent with `COMMON`; the two control nets were not recognized as shared selector nets.
 
-Before merging engine work, answer:
+The likely cause is access direction relative to the internal TG device placement, not the perimeter channel itself. With `nmos_side="left"` in each TG:
 
-- Which pipeline translation does this module own?
-- Is its input typed and independent of execution tools?
-- Is reusable policy in a planner rather than an executor or example?
-- Are hard constraints distinct from soft costs?
-- Does the output retain evidence and provenance?
-- Are unsupported cases explicit?
-- Do unit tests cover pure behavior?
-- Does `/foss` integration prove DRC and extracted connectivity?
-- Have this map, `VALIDATION_STATUS.md`, and any relevant ADR been updated without duplicating status or overstating validation?
+```text
+NMOS control outer access: W
+PMOS control_bar outer access: E
+```
+
+Therefore:
+
+```text
+VREF control_W and VSS control_bar_E are safe outer accesses for SELECT.
+VREF control_bar_E and VSS control_W are the electrically proven accesses for SELECT_BAR,
+but both face the inter-child gap rather than the outer selector perimeter.
+```
+
+Attempt 3 instead used `VREF control_bar_W` and `VSS control_E`; those directions point through each TG interior. DRC remained clean, but child-level extraction did not recognize the intended shared control nets.
+
+This diagnosis must be verified from the extracted netlist before changing code.
+
+## Exact next-session task
+
+Create a fresh branch from merged `main`, suggested name:
+
+```text
+feature/cdac-selector-connectivity
+```
+
+Do not begin scaled selectors or complete CDAC assembly first.
+
+Recovery sequence:
+
+1. Reproduce Attempt 3 and inspect the extracted selector netlist and connectivity report.
+2. Compare the child subcircuit pin participation of Attempt 2 and Attempt 3.
+3. Verify which `control/control_bar` W/E accesses are true extractable child pins after hierarchy placement.
+4. Preserve the clean north-perimeter `SELECT` path.
+5. Replace the folded `SELECT_BAR` path with a single-trunk central-gap topology using the proven inner-gap accesses:
+
+```text
+VREF control_bar_E
+-> horizontal branch to one derived central x
+-> one vertical trunk
+-> horizontal branch to VSS control_W
+```
+
+This removes the U-turn and close parallel legs while retaining the access pair that previously extracted correctly. A branch port may be placed on the central trunk. Use ordinary RoutePlan segments; do not add a specialized executor.
+6. Require DRC=0, extraction passed, exact shared selector net count=3, and visual acceptance.
+7. Only then validate B1/B2/B3 scaled selectors.
+
+## Merge posture for PR #5
+
+PR #5 is suitable to merge as a foundation when all of the following are true:
+
+```text
+CI passes
+ENGINEERING_MAP.md reflects the unresolved selector boundary
+VALIDATION_STATUS.md records all three selector attempts
+PR description does not claim selector completion
+PR remains explicit that full CDAC placement/routing and LVS are not complete
+```
+
+The selector prototype stays in the branch because it provides the hierarchy, typed contracts, pure tests, reproducible failure, and the correct starting point for the next branch. It is not a validated reusable selector primitive yet.
+
+## Work after selector closure
+
+```text
+1. validate B1/B2/B3 selector widths through the same generator
+2. define complete CDAC macro placement intent
+3. place capacitor array, four selectors, and reset TG
+4. run whole-placement Magic DRC
+5. add committed routes as typed physical resources
+6. add VOUT, B0, and reset topology planning
+7. extend to remaining bank/reference/control/supply nets
+8. add GF180 layer/width/via resolution as required
+9. run extraction, exact connectivity, and independent Netgen LVS
+```
+
+## Known debt
+
+```text
+metal VDD/VSS access for generated TGs is unresolved
+reference-selector control connectivity is unresolved
+legacy MOS placement lacks PlacementResult
+committed routes are not typed resources
+routing is primarily two-terminal and same-layer
+GF180 width/layer/via rules lack a resolver
+via planning and execution are absent
+multi-terminal CDAC topology planning is absent
+independent schematic LVS has not passed
+stable logical identity is not preserved through extraction end-to-end
+```
