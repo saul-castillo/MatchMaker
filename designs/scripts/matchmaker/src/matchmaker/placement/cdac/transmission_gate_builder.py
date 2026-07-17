@@ -21,13 +21,11 @@ from matchmaker.primitives.gf180_mos_primitive_factory import (
 
 
 def _assign_component_name(component, name: str):
-    try:
+    rename = getattr(component, "rename", None)
+    if callable(rename):
+        rename(name)
+    else:
         component.name = name
-    except Exception:
-        if hasattr(component, "rename"):
-            component.rename(name)
-        else:
-            raise
     return component
 
 
