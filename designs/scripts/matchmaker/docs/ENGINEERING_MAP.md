@@ -26,7 +26,7 @@ PR #3: modular dispatch and non-inline Manhattan routing, merged
 PR #4: CDAC reference-library normalization, included before PR #3 merge
 ```
 
-PR #5 pure tests and Python compilation pass. Physical MIM-port inspection and capacitor-array DRC remain pending in `/foss`.
+PR #5 pure tests and Python compilation passed before the capacitor physical-adapter checkpoint. The GF180 MIM primitive has now been inspected in `/foss`, and the generated 4 x 4 capacitor array has been visually confirmed. A fresh CI run and the array command's Magic DRC result are the next gates.
 
 ## Mission
 
@@ -57,8 +57,10 @@ allowed locations for concrete values:
   typed device/circuit specification
   named technology/reference preset
   explicit placement/routing policy
-  PDK rule adapter
+  PDK/device access adapter
 ```
+
+Primitive-name grammar may appear only in the corresponding device adapter. Physical layer, width, center, and orientation values must be read from actual primitive ports or resolved through a PDK rule adapter, never copied into generic algorithms.
 
 ## Golden pipeline
 
@@ -69,7 +71,7 @@ high-level circuit/layout intent
 -> typed placement intent and policy
 -> deterministic PlacementPlan
 -> placed geometry + stable PlacementResult bindings
--> PhysicalDesignSnapshot
+-> device-specific PhysicalDesignSnapshot adapter
 -> NetIntent / RouteGroupIntent / specialized topology intent
 -> RouteCandidate / RoutePlan
 -> mechanical geometry execution
@@ -84,8 +86,6 @@ Each major module owns one translation. Examples, primitive wrappers, builders, 
 
 ## Existing validated routing foundation
 
-Routing begins with logical connectivity, not fixed primitive ports.
-
 ```text
 NetIntent + PhysicalDesignSnapshot
 -> access-pair enumeration
@@ -96,7 +96,7 @@ NetIntent + PhysicalDesignSnapshot
 -> execution
 ```
 
-Implemented and physically validated:
+Physically validated regressions:
 
 ```text
 A0.gate -> A1.gate blocked external dogleg
@@ -173,7 +173,7 @@ src/matchmaker/placement/cdac/capacitor_array_builder.py
   build_cdac_capacitor_array
 ```
 
-New device-family builders return stable `PlacementResult` bindings. The validated legacy MOS builder still returns only a component and remains technical debt.
+New device-family builders return stable `PlacementResult` bindings. The legacy MOS builder still returns only a component and remains technical debt.
 
 ### Physical routing state
 
@@ -184,9 +184,51 @@ src/matchmaker/physical/models.py
   PlacedInstance
   RoutingObstacle
   PhysicalDesignSnapshot
+
+src/matchmaker/physical/cdac_capacitor_snapshot.py
+  Gf180MimExternalAccessPolicy
+  classify_gf180_mim_external_port_name
+  create_cdac_capacitor_array_physical_design_snapshot
 ```
 
-`PhysicalDesignSnapshot.access_points_for(TerminalRef(...))` is the supported electrical-to-physical bridge. Primitive names must be adapted once in a device-specific physical adapter.
+`PhysicalDesignSnapshot.access_points_for(TerminalRef(...))` is the supported electrical-to-physical bridge. Stable capacitor identity comes from `PlacementResult`, not reference ordering.
+
+## Observed GF180 MIM primitive contract
+
+The `/foss` diagnostic inspected the installed `glayout.primitives.mimcap.mimcap` implementation for a requested 5.0 x 5.0 unit.
+
+```text
+primitive bbox: 6.2 x 6.2
+raw exported ports: 264
+canonical external ports: 8
+nested/noncanonical exports ignored: 256
+```
+
+Canonical public access grammar:
+
+```text
+top_met_{N,E,S,W}       logical terminal: top
+bottom_met_{N,E,S,W}    logical terminal: bottom
+```
+
+Observed runtime layers and widths for this installed primitive:
+
+```text
+top accesses:    layer (42, 0), width 5.0
+bottom accesses: layer (36, 0), width 6.2
+```
+
+Those numeric values are evidence, not adapter constants. The adapter matches the exact three-token external name grammar, rejects nested names such as `array_row0_col0_top_met_E`, and copies layer, width, center, and orientation from each placed port at runtime. The grammar is an explicit configurable policy so another primitive API can be supported without changing generic snapshot logic.
+
+For the reviewed 16-unit array, the expected snapshot is:
+
+```text
+placed capacitor instances: 16
+canonical accesses per capacitor: 8
+canonical access total: 128
+logical terminals per capacitor: top, bottom
+instance obstacles: 16
+```
 
 ### Routing plans and execution
 
@@ -194,20 +236,6 @@ src/matchmaker/physical/models.py
 src/matchmaker/routing/planners/route_candidate.py
 src/matchmaker/routing/plans/route_plan.py
 src/matchmaker/routing/routers/route_plan_executor.py
-```
-
-Canonical types:
-
-```text
-RouteCandidate
-CandidateRejection
-StrategyDispatchResult
-RoutePlanningError
-RoutePlan
-RouteSegment
-ViaPlan
-RouteMetrics
-ConstraintCheck
 ```
 
 Executors draw resolved plans. They do not choose terminals, accesses, topology, channels, widths, layers, or vias. Via execution is not implemented and must fail explicitly.
@@ -253,43 +281,56 @@ named GF180 reviewed-reference preset
 schematic-independent CircuitManifest compiler
 generic PlacementResult
 3/4/5-bit pure-test coverage
-algorithmic grid inference
-algorithmic inversion symmetry
+algorithmic grid inference and inversion symmetry
 compatible B0/termination residual pairing
 explicit spacing and orientation policies
 GF180 MIM primitive wrapper
 MIM primitive diagnostic
 capacitor-array geometry builder
-GDS + Magic DRC example
+canonical capacitor access policy
+capacitor-array PhysicalDesignSnapshot adapter
+GDS + Magic DRC example with snapshot reporting
 ```
 
 The reviewed reference preset resolves to 15 switched unit capacitors, one termination unit, four shared selectors, one reset transmission gate, and 18 MOS devices. No generic algorithm assumes those counts.
 
-### Required `/foss` checkpoint
+### Immediate `/foss` checkpoint
 
-Run in this order:
+After pulling the latest branch, run:
 
 ```bash
-python scripts/matchmaker/examples/diagnostics/inspect_gf180_mim_capacitor.py
 python scripts/matchmaker/examples/placement/generate_cdac_capacitor_array.py
 ```
 
-The diagnostic must establish actual installed-gLayout capacitor port names, centers, orientations, widths, and layers. Do not implement the capacitor physical adapter by guessing them.
-
-### Next implementation after the diagnostic
+Required output boundary:
 
 ```text
-1. canonical capacitor top/bottom access adapter from observed primitive data
-2. capacitor-array PhysicalDesignSnapshot
-3. parameterized transmission-gate geometry builder
-4. parameterized reference-selector hierarchy
-5. selector/reset placement policy with reserved routing channels
-6. complete unrouted CDAC placement and Magic DRC
-7. committed-route resources and GF180 routing-rule resolution
-8. VOUT, B0, and reset topology planning
-9. extraction and exact connectivity checks
-10. remaining bank/reference/control/supply routing
-11. independent schematic LVS
+grid shape: 4 x 4
+capacitor instances: 16
+physical instances: 16
+physical access points: 128
+routing obstacles: 16
+example top access count: 4
+example bottom access count: 4
+DRC passed: True
+DRC violations: 0
+```
+
+Do not claim capacitor-array physical validation until the DRC result is observed and recorded in `VALIDATION_STATUS.md`.
+
+### Next implementation after that checkpoint
+
+```text
+1. parameterized transmission-gate geometry builder
+2. transmission-gate physical adapter
+3. parameterized reference-selector hierarchy
+4. selector/reset placement policy with reserved routing channels
+5. complete unrouted CDAC placement and Magic DRC
+6. committed-route resources and GF180 routing-rule resolution
+7. VOUT, B0, and reset topology planning
+8. extraction and exact connectivity checks
+9. remaining bank/reference/control/supply routing
+10. independent schematic LVS
 ```
 
 ## Package ownership
@@ -300,7 +341,7 @@ specs/           typed device and circuit-family specifications
 placement/core/  generic plans, policies, results, and stable bindings
 placement/mos/   MOS-specific placement
 placement/cdac/  CDAC-specific placement policy and construction
-physical/        placed-state snapshots and access adapters
+physical/        placed-state snapshots and device access adapters
 primitives/      PDK/gLayout primitive construction only
 routing/intents/ logical net and route-group requests
 routing/planners pure route/topology planning
@@ -315,27 +356,27 @@ examples/        package wiring and diagnostics only
 
 1. Typed generator intent is independent of schematics.
 2. Schematics are LVS references only.
-3. Concrete design values live in specs, presets, policies, or PDK adapters.
+3. Concrete design values live in specs, presets, policies, or PDK/device adapters.
 4. Logical terminals are separate from physical access points.
 5. Pure compilers and planners do not mutate layout components.
 6. Builders execute placement plans; they do not invent hierarchy or symmetry policy.
-7. Executors do not invent routing policy.
-8. Examples contain no reusable engine logic.
-9. New device-family placement returns stable logical bindings.
-10. New routing work consumes `PhysicalDesignSnapshot`.
-11. Hard constraints reject before soft-cost ranking.
-12. Candidates and plans retain metrics, evidence, and provenance.
-13. Unsupported cases fail explicitly.
-14. DRC never proves electrical correctness.
-15. Connectivity-changing integration requires extraction or LVS evidence.
-16. Major architecture changes require an ADR.
-17. Live state belongs here; observed physical output belongs in `VALIDATION_STATUS.md`.
+7. Physical adapters interpret primitive APIs once and copy physical values at runtime.
+8. Executors do not invent routing policy.
+9. Examples contain no reusable engine logic.
+10. New device-family placement returns stable logical bindings.
+11. New routing work consumes `PhysicalDesignSnapshot`.
+12. Hard constraints reject before soft-cost ranking.
+13. Candidates and plans retain metrics, evidence, and provenance.
+14. Unsupported cases fail explicitly.
+15. DRC never proves electrical correctness.
+16. Connectivity-changing integration requires extraction or LVS evidence.
+17. Major architecture changes require an ADR.
+18. Live state belongs here; observed physical output belongs in `VALIDATION_STATUS.md`.
 
 ## Known debt
 
 - Legacy MOS placement does not yet return `PlacementResult`.
 - MOS snapshot construction still depends partly on recovered reference bindings.
-- No capacitor physical adapter exists until the `/foss` diagnostic is reviewed.
 - Transmission-gate and selector layout builders do not exist yet.
 - Routing is two-terminal and same-layer only.
 - Committed routes are not typed routing resources.
