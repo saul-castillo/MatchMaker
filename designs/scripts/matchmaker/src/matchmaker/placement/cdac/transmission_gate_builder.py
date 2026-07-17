@@ -2,6 +2,10 @@ from math import isclose
 
 from glayout.backend import Component
 
+from matchmaker.design.transmission_gate_naming import (
+    NMOS_INSTANCE_NAME,
+    PMOS_INSTANCE_NAME,
+)
 from matchmaker.physical.gf180_mos_access import gf180_mos_external_port_name
 from matchmaker.placement.cdac.transmission_gate_intent import (
     TransmissionGateLayoutIntent,
@@ -14,10 +18,6 @@ from matchmaker.placement.core.tile_plan import PlacementPlan, Tile
 from matchmaker.primitives.gf180_mos_primitive_factory import (
     create_gf180_mos_primitive,
 )
-
-
-NMOS_INSTANCE_NAME = "NMOS"
-PMOS_INSTANCE_NAME = "PMOS"
 
 
 def _assign_component_name(component, name: str):
