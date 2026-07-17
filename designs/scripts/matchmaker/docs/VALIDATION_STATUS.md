@@ -104,6 +104,48 @@ DRC violations: 0
 
 The generated GDS was visually inspected and showed a regular, uniformly spaced 4 by 4 MIM array. This validates placement geometry and DRC only. The capacitor plates are not yet routed, so no extracted-connectivity or LVS claim is made.
 
+### Installed GF180 MOS primitives for the base transmission gate
+
+Command:
+
+```bash
+python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
+```
+
+Observed on 2026-07-17 in `/foss` using the typed reset/B0 switch dimensions:
+
+```text
+requested NMOS: W=4.0 µm, L=0.28 µm
+requested PMOS: W=8.0 µm, L=0.28 µm
+
+NMOS bbox: (-7.74, -10.065) to (7.74, 10.065)
+NMOS raw ports: 2672
+NMOS canonical simple ports: 16
+
+PMOS bbox: (-5.245, -9.565) to (5.245, 9.565)
+PMOS raw ports: 1392
+PMOS canonical simple ports: 16
+```
+
+For both devices, simple `gate_*`, `source_*`, and `drain_*` accesses are on the runtime metal layer reported as `(36, 0)`. Their E/W access widths are 0.5 µm. The source/drain vertical offsets differ between NMOS and PMOS by the same 2.0 µm, so one derived PMOS translation can align both parallel signal nets.
+
+The simple `well_*` ports are on well-definition layers, observed as `(204, 0)` for the NMOS and `(21, 0)` for the PMOS. They are physical bulk boundaries, not yet accepted as routed `VSS` or `VDD` metal ports. Supply semantics remain blocked until simple unclassified tie/substrate-tap exports are inspected.
+
+The diagnostic also showed that installed gLayout accepts `with_tie`, `with_dummy`, `with_substrate_tap`, routing-metal, and tie-layer options. Those controls must remain typed primitive/layout policy, not hidden builder literals.
+
+### Next transmission-gate checkpoint
+
+Pull the latest PR #5 branch and run:
+
+```bash
+python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
+python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
+```
+
+The first command now prints simple unclassified ports separately to identify metal tie/substrate-tap candidates. The second command attempts the typed base transmission-gate placement, runtime MOS snapshot, parallel input/output plans, public input/output/control ports, GDS generation, and Magic DRC.
+
+No generated transmission-gate geometry, DRC result, extraction result, or supply-port assignment is claimed until that output is observed.
+
 ## Current demonstrated boundary
 
 Validated:
@@ -122,12 +164,15 @@ algorithmic inversion-symmetric capacitor placement
 stable capacitor PlacementResult bindings
 canonical capacitor PhysicalDesignSnapshot
 4 x 4 GF180 MIM array with zero DRC violations
+installed NMOS/PMOS signatures, bboxes, and simple external ports inspected
 ```
 
 Not yet demonstrated:
 
 ```text
-generated transmission-gate geometry
+generated transmission-gate geometry or DRC
+metal VDD/VSS access for the transmission gate
+transmission-gate extraction and two-net connectivity
 reference-selector hierarchy
 complete CDAC placement
 routed VOUT or bank nets
