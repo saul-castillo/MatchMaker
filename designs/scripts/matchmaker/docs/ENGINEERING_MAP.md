@@ -9,10 +9,27 @@ base: main
 branch: feature/cdac-layout-foundation
 PR: #5, draft
 PR #1-#4: merged
-active checkpoint: generated base transmission gate
+active checkpoint: base transmission-gate extraction and exact two-net connectivity
 ```
 
-The capacitor foundation is physically validated: 16 stable MIM instances, 128 canonical accesses, 16 obstacles, and zero Magic DRC violations. The installed base NMOS/PMOS primitives have been inspected. The next gate is generated transmission-gate GDS and DRC.
+Physically demonstrated on PR #5:
+
+```text
+4 x 4 GF180 MIM array
+  16 stable instances
+  128 canonical accesses
+  16 obstacles
+  Magic DRC: zero violations
+
+base/reset transmission gate
+  NMOS W=4 µm, PMOS W=8 µm, L=0.28 µm
+  2 stable instances
+  32 canonical accesses
+  2 ordinary RoutePlans for parallel signal nets
+  Magic DRC: zero violations
+```
+
+The next gate is Magic extraction proving that the generated NMOS and PMOS share exactly two distinct signal nets.
 
 ## Source of truth
 
@@ -41,7 +58,7 @@ explicit placement/routing policy
 PDK or device-access adapter
 ```
 
-Primitive name grammar belongs only in the matching adapter. Layer, width, center, and orientation are copied from runtime ports or resolved by a PDK rule adapter. Tests must vary configuration.
+Primitive name grammar belongs only in the matching adapter. Layer, width, center, orientation, and envelope data are copied from runtime geometry or resolved by a PDK rule adapter. Tests must vary configuration.
 
 ## Pipeline
 
@@ -121,6 +138,12 @@ routing/planners/transmission_gate_topology_planner.py
 generators/transmission_gate_generator.py
   GeneratedTransmissionGate
   generate_transmission_gate
+
+verification/netlist/shared_net_multiplicity.py
+  SharedNetMultiplicityExpectation
+  SharedNetMultiplicityResult
+  evaluate_shared_net_multiplicity
+  evaluate_extracted_shared_net_multiplicity
 ```
 
 `CircuitManifest` is compiled from typed specs without consulting a schematic. New device-family placement returns stable `PlacementResult` bindings. `PhysicalDesignSnapshot.access_points_for(...)` is the supported logical-to-physical bridge.
@@ -166,11 +189,11 @@ obstacles: 16
 Magic DRC: zero violations
 ```
 
-Observed layer and width values are validation evidence only. The capacitor adapter reads them from runtime ports.
+Observed layer and width values are evidence only. The capacitor adapter reads them from runtime ports. No capacitor plate is routed yet.
 
 ## Transmission-gate architecture
 
-### Observed primitive facts
+### Observed primitive contract
 
 The typed base/reset switch uses NMOS W=4 µm and PMOS W=8 µm at L=0.28 µm. The installed primitives expose thousands of nested ports but only 16 simple canonical ports per device:
 
@@ -181,9 +204,9 @@ drain_{N,E,S,W}
 well_{N,E,S,W} -> physical bulk boundary
 ```
 
-Signal accesses are observed on one common runtime metal layer. NMOS and PMOS source/drain vertical offsets differ by the same amount, allowing one derived PMOS translation to align both nets. The generator does not copy those coordinates or layers into policy.
+Signal accesses are on one common runtime metal layer. NMOS and PMOS source/drain vertical offsets differ by the same amount, allowing one derived PMOS translation to align both nets. The generator does not copy those coordinates or layers into policy.
 
-`well_*` ports are not accepted as `VDD` or `VSS` metal ports. Supply assignment waits for inspection of simple unclassified tie/substrate-tap exports.
+`well_*` ports are not accepted as `VDD` or `VSS` metal ports. The concise diagnostic did not expose another simple unclassified tie/substrate-tap access. Supply assignment remains blocked rather than guessed.
 
 ### Implemented translation boundaries
 
@@ -211,59 +234,91 @@ placement + plans
    exposes input/output/control/control_bar ports
 ```
 
-No specialized geometry executor is allowed. Supply semantics are intentionally absent until the primitive tie contract is observed.
+No specialized geometry executor is allowed. Supply semantics are intentionally absent until a metal tie contract is demonstrated.
+
+### Current physical result
+
+```text
+generated bbox: (-16.48, -11.565) to (11.49, 10.065)
+instances: 2
+accesses: 32
+obstacles: 2
+input route:  source_E -> source_W, length 13.345, width 0.5
+output route: drain_E -> drain_W, length 13.345, width 0.5
+route layer: runtime (36, 0)
+Magic DRC: zero violations
+```
+
+The GDS visually shows two separated primitive envelopes and two parallel horizontal signal straps. DRC does not prove connectivity.
 
 ### Immediate `/foss` checkpoint
 
 ```bash
 git pull --ff-only
 source scripts/matchmaker/env/setup.sh
-python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
 python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
 ```
 
-The diagnostic now prints simple unclassified ports separately. The generator command must report two physical instances, runtime access counts, two parallel signal RoutePlans, public input/output/control ports, a GDS path, and a Magic DRC result.
+The command now performs:
 
-Do not claim transmission-gate connectivity yet. If DRC passes, add extraction evidence that exactly two distinct shared nets connect the NMOS and PMOS before treating the cell as electrically validated.
+```text
+GDS generation
+-> Magic DRC
+-> Magic extraction
+-> exact shared-net multiplicity assertion
+```
+
+Required result:
+
+```text
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: True
+shared signal net count: 2
+pre-LVS checks passed: True
+```
+
+The assertion requires exactly two distinct shared nets with the generated NMOS and PMOS subcircuits as the complete participant multiset. One shared net, three shared nets, or an extra participant fails.
+
+## Cleanup completed at this checkpoint
+
+```text
+historical dummy keyword aliases are resolved against the installed signature
+unsupported dummy-alias warnings are no longer expected
+child MOS cells are explicitly renamed before GDS writing
+pure modules no longer import gLayout through package __init__ side effects
+CI retains a compact uploaded test log for future failure diagnosis
+```
 
 ## Next development order
 
 ```text
-1. inspect simple unclassified MOS tie/substrate-tap ports
-2. run generated base transmission-gate GDS and Magic DRC
-3. repair placement/routing policy only from observed geometry if needed
-4. add exact two-shared-net extraction assertion
-5. assign typed VDD/VSS access after tie-port evidence
-6. validate base/reset transmission gate
-7. reuse the same generator for B1/B2/B3 widths
-8. build the two-transmission-gate reference selector
-9. place four selectors and reset beside the capacitor array
-10. generate complete unrouted CDAC and run Magic DRC
-11. add committed-route resources and GF180 rule resolution
-12. route VOUT, B0, and reset, then prove extraction
-13. route remaining banks/references/controls/supplies
-14. run independent schematic-to-layout Netgen LVS
+1. pass transmission-gate DRC, extraction, and exact two-net connectivity
+2. inspect deeper primitive tie/substrate-tap exports only if supply access is required
+3. define typed VDD/VSS access policy from observed metal ports
+4. validate the same generator at B1/B2/B3 scaled widths
+5. build a parameterized two-transmission-gate reference selector
+6. prove selector input/common/control connectivity
+7. place four scaled selectors and reset beside the capacitor array
+8. generate the complete unrouted CDAC placement and run Magic DRC
+9. add committed routes as typed physical resources
+10. add VOUT, B0, and reset topology planning
+11. extend to remaining bank/reference/control/supply nets
+12. run extraction, exact connectivity checks, and independent Netgen LVS
 ```
 
-## Package ownership
+## Device-specific extension model
 
 ```text
-design/          logical hierarchy, connectivity, stable naming
-specs/           typed device and circuit-family specifications
-placement/core/  generic plans, policies, results, stable bindings
-placement/mos/   MOS-array-specific placement
-placement/cdac/  capacitor and switch placement policy
-physical/        physical snapshots and device access adapters
-primitives/      PDK/gLayout primitive construction only
-routing/intents/ logical net and route-group requests
-routing/planners pure routing and topology planning
-routing/plans/   common execution-ready IR
-routing/routers/ mechanical geometry execution
-generators/      pipeline orchestration only
-verification/    DRC, extraction, connectivity, LVS, parsing
-outputs/         artifact conventions
-examples/        wiring and diagnostics only
+MOS adapter -> gate/source/drain/bulk
+capacitor adapter -> top/bottom
+transmission-gate adapter -> input/output/control/control_bar/supplies
+reference-selector adapter -> references/common/control/supplies
+CDAC adapter -> banks/selectors/reset/public nets
 ```
+
+Specialized planners consume common intent/snapshot contracts and emit common plan types. Specialized execution paths are prohibited.
 
 ## Invariants
 
@@ -271,31 +326,30 @@ examples/        wiring and diagnostics only
 2. Schematics are LVS references only.
 3. Concrete values live in specs, presets, policies, or adapters.
 4. Logical terminals differ from physical accesses.
-5. Pure compilers and planners do not mutate layout.
-6. Builders execute placement policy; they do not invent hierarchy.
-7. Device adapters interpret primitive APIs once and copy runtime values.
+5. Pure compilers/planners do not mutate layout.
+6. Builders execute plans; they do not invent hierarchy.
+7. Adapters interpret primitive APIs once and copy runtime values.
 8. Executors do not invent routing policy.
-9. Generators orchestrate existing stages; they do not hide reusable policy.
-10. Examples contain no reusable policy.
-11. New placement returns stable bindings.
-12. New routing consumes `PhysicalDesignSnapshot`.
-13. Hard constraints reject before ranking.
-14. Unsupported cases fail explicitly.
-15. DRC never proves connectivity.
-16. Connectivity-changing work requires extraction or LVS.
-17. Major architecture changes require an ADR.
-18. Live state stays here; physical evidence stays in `VALIDATION_STATUS.md`.
+9. Examples contain no reusable policy.
+10. New placement returns stable bindings.
+11. New routing consumes `PhysicalDesignSnapshot`.
+12. Hard constraints reject before ranking.
+13. Unsupported cases fail explicitly.
+14. DRC never proves connectivity.
+15. Connectivity-changing work requires extraction or LVS.
+16. Major architecture changes require an ADR.
+17. Live state stays here; physical evidence stays in `VALIDATION_STATUS.md`.
 
 ## Known debt
 
 ```text
 legacy MOS placement lacks PlacementResult
+metal supply access for generated transmission gates is unresolved
 committed routes are not typed resources
-routing is two-terminal and same-layer only outside specialized topology planners
+routing is two-terminal and same-layer only
 GF180 width/layer/via rules lack a resolver
 via planning and execution are absent
 multi-terminal CDAC topology planning is absent
-transmission-gate supply access is unresolved
 independent schematic LVS has not passed
 stable logical identity is not preserved through extraction end-to-end
 ```
