@@ -3,7 +3,8 @@ from typing import Literal
 
 from matchmaker.primitives.gf180_mos_primitive_options import (
     Gf180MosPrimitiveOptions,
-    make_gf180_bulk_tied_mos_options,
+    make_gf180_compact_bulk_tied_mos_options,
+    require_gf180_compact_bulk_tied_mos_options,
 )
 from matchmaker.specs.transmission_gate_spec import TransmissionGateSpec
 
@@ -68,15 +69,23 @@ class TransmissionGateLayoutIntent:
         default_factory=TransmissionGateLayoutPolicy
     )
     nmos_primitive_options: Gf180MosPrimitiveOptions = field(
-        default_factory=make_gf180_bulk_tied_mos_options
+        default_factory=make_gf180_compact_bulk_tied_mos_options
     )
     pmos_primitive_options: Gf180MosPrimitiveOptions = field(
-        default_factory=make_gf180_bulk_tied_mos_options
+        default_factory=make_gf180_compact_bulk_tied_mos_options
     )
 
     def __post_init__(self) -> None:
         if self.cell_name is not None and not self.cell_name:
             raise ValueError("transmission-gate cell_name must be non-empty")
+        require_gf180_compact_bulk_tied_mos_options(
+            self.nmos_primitive_options,
+            context="transmission-gate NMOS primitive options",
+        )
+        require_gf180_compact_bulk_tied_mos_options(
+            self.pmos_primitive_options,
+            context="transmission-gate PMOS primitive options",
+        )
 
     @property
     def resolved_cell_name(self) -> str:

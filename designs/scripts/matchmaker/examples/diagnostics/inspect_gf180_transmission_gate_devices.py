@@ -14,7 +14,8 @@ from matchmaker.primitives.gf180_mos_primitive_factory import (
     pmos,
 )
 from matchmaker.primitives.gf180_mos_primitive_options import (
-    make_gf180_bulk_tied_mos_options,
+    make_gf180_compact_bulk_tied_mos_options,
+    render_gf180_mos_primitive_profile,
 )
 from matchmaker.specs.banked_cdac_spec import (
     make_gf180_4bit_banked_cdac_reference_spec,
@@ -28,6 +29,21 @@ def _ports(component):
     if hasattr(ports, "values"):
         return tuple(ports.values())
     return tuple(ports)
+
+
+def _bbox_summary(component) -> str:
+    try:
+        (xmin, ymin), (xmax, ymax) = component.bbox
+        xmin, ymin, xmax, ymax = map(float, (xmin, ymin, xmax, ymax))
+    except (TypeError, ValueError) as error:
+        raise RuntimeError(
+            f"component {getattr(component, 'name', '<unnamed>')!r} exposes "
+            f"an unsupported bbox {getattr(component, 'bbox', None)!r}"
+        ) from error
+    return (
+        f"({xmin}, {ymin}) to ({xmax}, {ymax}); "
+        f"size=({xmax - xmin}, {ymax - ymin})"
+    )
 
 
 def _report_port(prefix: str, port, *, terminal: str | None = None) -> None:
@@ -71,7 +87,7 @@ def _report_device(label: str, component, *, full_ports: bool) -> None:
             simple_unclassified.append(port)
 
     print(f"{label} component name: {component.name}")
-    print(f"{label} bbox: {component.bbox}")
+    print(f"{label} bbox: {_bbox_summary(component)}")
     print(f"{label} raw port count: {len(ports)}")
     terminal_counts = Counter(terminal for _, terminal in canonical)
     print(f"{label} routable external port count: {len(canonical)}")
@@ -117,7 +133,7 @@ def main() -> int:
     if switch is None:
         raise RuntimeError("reference preset does not define a reset switch")
 
-    primitive_options = make_gf180_bulk_tied_mos_options()
+    primitive_options = make_gf180_compact_bulk_tied_mos_options()
     nmos_component = create_gf180_mos_primitive(
         switch.nmos,
         primitive_options=primitive_options,
@@ -131,7 +147,10 @@ def main() -> int:
     print(f"nmos signature: {signature(nmos)}")
     print(f"pmos callable: {pmos.__module__}.{pmos.__name__}")
     print(f"pmos signature: {signature(pmos)}")
-    print(f"explicit primitive options: {primitive_options}")
+    print(
+        "explicit compact primitive profile: "
+        + render_gf180_mos_primitive_profile(primitive_options)
+    )
     print(
         "requested switch dimensions: "
         f"nmos=(W={switch.nmos.width}, L={switch.nmos.length}), "

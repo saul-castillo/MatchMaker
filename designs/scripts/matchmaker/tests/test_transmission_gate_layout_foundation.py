@@ -15,6 +15,9 @@ from matchmaker.placement.cdac.transmission_gate_intent import (
     TransmissionGateLayoutIntent,
     TransmissionGateLayoutPolicy,
 )
+from matchmaker.primitives.gf180_mos_primitive_options import (
+    Gf180MosPrimitiveOptions,
+)
 from matchmaker.routing.planners.transmission_gate_topology_planner import (
     plan_transmission_gate_signal_topology,
 )
@@ -53,24 +56,52 @@ class Gf180MosExternalAccessTests(unittest.TestCase):
 
 
 class TransmissionGateTopologyTests(unittest.TestCase):
+    @staticmethod
+    def _spec() -> TransmissionGateSpec:
+        return TransmissionGateSpec(
+            name="test_tg",
+            nmos=MosDeviceSpec("test_nmos", "nfet", 3.7, 0.31),
+            pmos=MosDeviceSpec("test_pmos", "pfet", 7.1, 0.31),
+        )
+
     def _intent(self, *, route_width=None):
         return TransmissionGateLayoutIntent(
-            spec=TransmissionGateSpec(
-                name="test_tg",
-                nmos=MosDeviceSpec("test_nmos", "nfet", 3.7, 0.31),
-                pmos=MosDeviceSpec("test_pmos", "pfet", 7.1, 0.31),
-            ),
+            spec=self._spec(),
             policy=TransmissionGateLayoutPolicy(route_width=route_width),
         )
 
-    def test_default_intent_requires_primitive_bulk_ties(self):
+    def test_default_intent_requires_explicit_compact_bulk_tied_profile(self):
         intent = self._intent()
-        self.assertIs(intent.nmos_primitive_options.with_tie, True)
-        self.assertIs(intent.pmos_primitive_options.with_tie, True)
+        for options in (
+            intent.nmos_primitive_options,
+            intent.pmos_primitive_options,
+        ):
+            self.assertIs(options.with_tie, True)
+            self.assertIs(options.with_substrate_tap, False)
+            self.assertIs(options.with_dnwell, False)
+            self.assertIs(options.with_guardring, False)
+            self.assertEqual(options.with_dummy, (False, False))
         self.assertEqual(
             intent.policy.supply_directions,
             ("N", "E", "S", "W"),
         )
+
+    def test_inherited_or_expansive_mos_profiles_are_rejected(self):
+        inherited = Gf180MosPrimitiveOptions(with_tie=True)
+        expansive = Gf180MosPrimitiveOptions(
+            with_substrate_tap=True,
+            with_tie=True,
+            with_dnwell=False,
+            with_guardring=False,
+            with_dummy=(False, False),
+        )
+        for label, options in (("inherited", inherited), ("expansive", expansive)):
+            with self.subTest(profile=label):
+                with self.assertRaisesRegex(ValueError, "explicit compact GF180"):
+                    TransmissionGateLayoutIntent(
+                        spec=self._spec(),
+                        nmos_primitive_options=options,
+                    )
 
     def _snapshot(self, *, output_y=4.0):
         layer = (77, 4)

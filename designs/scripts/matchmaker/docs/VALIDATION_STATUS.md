@@ -1,6 +1,19 @@
 # Validation status
 
-This file records physical evidence demonstrated in the Chipathon `/foss` environment. Architecture and development direction belong in `ENGINEERING_MAP.md`; durable decisions belong in ADRs.
+This file records physical evidence demonstrated in the Chipathon `/foss`
+environment. Architecture and development direction belong in
+`ENGINEERING_MAP.md`; durable decisions belong in ADRs.
+
+## Acceptance rules
+
+```text
+DRC cleanliness does not prove connectivity.
+Extraction does not prove correct terminal identity.
+Shared-net counts do not replace child-interface inspection.
+Visual symmetry does not replace electrical evidence.
+Pre-LVS checks do not replace independent schematic-to-layout LVS.
+A reconstructed source change must be rerun before inheriting the lost workspace's physical claim.
+```
 
 ## Merged routing foundation
 
@@ -22,20 +35,19 @@ A0.gate -> A2.gate
   exact endpoint connectivity: passed
 ```
 
-Earlier direct and layer-only routes were DRC-clean but electrically connected intervening devices. DRC never substitutes for extraction or LVS.
+Earlier direct and layer-only routes were DRC-clean but electrically connected
+intervening devices.
 
-## PR #5 CDAC foundation
-
-Initial observations below were made on 2026-07-17 in `/foss` using
-`gf180mcuD`; later reruns are dated where recorded.
-
-### Installed GF180 MIM primitive
+## Capacitor foundation
 
 Command:
 
 ```bash
 python scripts/matchmaker/examples/diagnostics/inspect_gf180_mim_capacitor.py
+python scripts/matchmaker/examples/placement/generate_cdac_capacitor_array.py
 ```
+
+Observed GF180 MIM contract:
 
 ```text
 requested unit: 5 µm x 5 µm
@@ -54,24 +66,11 @@ bottom_met_E/N/S/W
   observed width: 6.2
 ```
 
-The other 256 ports are nested implementation exports and are excluded. The adapter reads center, orientation, width, and layer from runtime geometry.
-
-### Generated reviewed capacitor array
-
-Command:
-
-```bash
-python scripts/matchmaker/examples/placement/generate_cdac_capacitor_array.py
-```
+Generated reviewed array:
 
 ```text
 grid: 4 x 4
 counts: B0=1, B1=2, B2=4, B3=8, TERM=1
-pattern:
-  B2 B2 B3 B3
-  B1 B0 B3 B3
-  B3 B3 TERM B1
-  B3 B3 B2 B2
 instances: 16
 canonical accesses: 128
 obstacles: 16
@@ -79,9 +78,10 @@ DRC passed: True
 DRC violations: 0
 ```
 
-The GDS was visually inspected and showed a regular, uniformly spaced array. Capacitor plates are not routed, so no extracted-connectivity or LVS claim is made.
+The array was visually regular. Capacitor plates are not routed, so no extracted
+connectivity or LVS claim is made.
 
-### Installed GF180 MOS primitives
+## GF180 MOS access contract
 
 Command:
 
@@ -89,45 +89,43 @@ Command:
 python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
 ```
 
+Measured on 2026-07-23 before the compact-profile correction:
+
 ```text
 NMOS: W=4.0 µm, L=0.28 µm
   bbox: (-7.74, -10.065) to (7.74, 10.065)
   raw ports: 2672
-  canonical ports: 16
 
 PMOS: W=8.0 µm, L=0.28 µm
   bbox: (-5.245, -9.565) to (5.245, 9.565)
   raw ports: 1392
-  canonical ports: 16
+
+required terminal counts per device:
+  bulk=4, drain=4, gate=4, source=4
+
+N/S body ties:
+  layer: (36, 0)
+  width: 3.16
+
+E/W body ties:
+  layer: (34, 0)
+  NMOS width: 7.81
+  PMOS width: 11.81
 ```
 
-Both devices expose cardinal gate/source/drain accesses on the observed runtime
-metal layer `(36, 0)`. E/W signal widths are 0.5 µm. `well_*` ports are
-well-definition boundaries and are not accepted as VDD/VSS metal accesses.
-
-The corrected adapter was rerun in `/foss` on 2026-07-23. Each device reported
-exactly four accesses for every required terminal:
+The accepted conductive bulk grammar is limited to:
 
 ```text
-bulk=4, drain=4, gate=4, source=4
-
-NMOS tie_N_top_met_N: layer (36, 0), width 3.16
-NMOS tie_S_top_met_S: layer (36, 0), width 3.16
-NMOS tie_E_top_met_E: layer (34, 0), width 7.81
-NMOS tie_W_top_met_W: layer (34, 0), width 7.81
-
-PMOS tie_N_top_met_N: layer (36, 0), width 3.16
-PMOS tie_S_top_met_S: layer (36, 0), width 3.16
-PMOS tie_E_top_met_E: layer (34, 0), width 11.81
-PMOS tie_W_top_met_W: layer (34, 0), width 11.81
+tie_N_top_met_N
+tie_E_top_met_E
+tie_S_top_met_S
+tie_W_top_met_W
 ```
 
-The diagnostic separately reported four unclassified `well_*` boundaries for
-each device, confirming that they are excluded from the conductive bulk
-contract. The N/S ties share met2 `(36, 0)` with signal-level VSS, so the B0
-selector does not need a via to close its supply topology.
+`well_*` boundaries remain geometry markers and are not electrical routing
+accesses.
 
-### Generated base/reset transmission gate
+## Base transmission-gate evidence
 
 Command:
 
@@ -135,24 +133,22 @@ Command:
 python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
 ```
 
+Observed before the compact-profile correction:
+
 ```text
-generated bbox: (-16.48, -11.565) to (11.49, 10.065)
 instances: 2
 canonical accesses: 32
-obstacles: 2
 public supply ports: vss_N/E/S/W, vdd_N/E/S/W
 
 input route:
-  NMOS__source_E -> PMOS__source_W
-  length: 13.345
-  width: 0.5
+  NMOS source -> PMOS source
   layer: (36, 0)
+  width: 0.5
 
 output route:
-  NMOS__drain_E -> PMOS__drain_W
-  length: 13.345
-  width: 0.5
+  NMOS drain -> PMOS drain
   layer: (36, 0)
+  width: 0.5
 
 DRC passed: True
 DRC violations: 0
@@ -162,59 +158,47 @@ shared signal net count: 2
 pre-LVS checks passed: True
 ```
 
-The two extracted shared nets contain exactly the generated NMOS and PMOS subcircuits as their complete participant multiset. This closes the base TG as a validated pre-LVS generator primitive. Supply connection and independent schematic LVS remain separate gates.
+This closes the two signal nets for the measured leaf geometry. Because the
+recovered source now changes geometry-affecting primitive options, the base TG
+must be rerun before the compact profile inherits this physical acceptance.
 
-The 2026-07-23 rerun retained all of these results after replacing the former
-`well_*` classification with conductive body ties. The unnamed-cell warning
-from GDS writing is informational; generation and every verification gate
-completed successfully.
+## B0 selector validation history
 
-## B0 reference-selector validation history
-
-Command for the recorded selector attempts:
+Command for all recorded selector attempts:
 
 ```bash
 python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
 ```
 
-The selector hierarchy contains two independently generated base TG child cells and three intended shared nets: `COMMON`, `SELECT`, and `SELECT_BAR`.
-
-### Attempt 1: internal vertical escapes
+The hierarchy contains two independently generated TG child cells. The eventual
+five shared nets are:
 
 ```text
-generated bbox: (-29.97, -13.065) to (29.97, 13.065)
-child instances: 2
-physical accesses: 24
-obstacles: 2
-public ports: vref_W, vss_E, common_N, select_N, select_bar_S
+COMMON
+SELECT
+SELECT_BAR
+VSS
+VDD
+```
 
-COMMON:
-  VREF_TG__output_E -> VSS_TG__output_W
-  length: 15.345
-  bends: 0
+### Attempt 1: internal vertical escapes — rejected
 
-SELECT:
-  VREF_TG__control_N -> VSS_TG__control_bar_N
-  length: 80.975
-  bends: 2
-
-SELECT_BAR:
-  VREF_TG__control_bar_S -> VSS_TG__control_S
-  length: 33.225
-  bends: 2
-
+```text
+COMMON: direct inner output strap
+SELECT: internal north escape
+SELECT_BAR: internal south escape
 DRC passed: False
 DRC violations: 6
 ```
 
-Visual inspection showed the control-route vertical legs crossing child-device interiors before reaching their external channels.
+Visual inspection showed control-route legs crossing child-device interiors.
 
-### Attempt 2: folded central corridor
+### Attempt 2: folded central corridor — electrically valid, visually rejected
 
 ```text
 COMMON: direct inner output strap
 SELECT: north perimeter route
-SELECT_BAR: central-gap route with two close vertical legs and a short bottom U-turn
+SELECT_BAR: central-gap route with close parallel legs and a short U-turn
 DRC passed: True
 DRC violations: 0
 extraction passed: True
@@ -223,31 +207,15 @@ shared selector net count: 3
 pre-LVS checks passed: True
 ```
 
-This attempt was electrically valid but rejected as final analog geometry. The center fold added unnecessary local coupling, length, asymmetry, and fragility.
+The fold added unnecessary coupling, length, asymmetry, and fragility.
 
-### Attempt 3: opposite perimeter controls
-
-Observed final run:
+### Attempt 3: opposite perimeter controls — rejected
 
 ```text
-COMMON strategy: reference_selector_direct_common
-COMMON length: 15.345
-COMMON bends: 0
-
-SELECT strategy: reference_selector_north_perimeter_control
-SELECT accesses: VREF_TG__control_W, VSS_TG__control_bar_E
 SELECT length: 116.445
 SELECT bends: 4
-SELECT width: 0.5
-SELECT layer: (36, 0)
-
-SELECT_BAR strategy: reference_selector_south_perimeter_control
-SELECT_BAR accesses: VREF_TG__control_bar_W, VSS_TG__control_E
 SELECT_BAR length: 128.635
 SELECT_BAR bends: 4
-SELECT_BAR width: 0.5
-SELECT_BAR layer: (36, 0)
-
 DRC passed: True
 DRC violations: 0
 extraction passed: True
@@ -256,71 +224,38 @@ shared selector net count: 1
 pre-LVS checks passed: False
 ```
 
-The GDS was visually cleaner and symmetric, but only one shared child-level net was extracted. The two intended control nets were not recognized as shared selector nets. Therefore this selector is not validated and must not be treated as a reusable primitive.
+The chosen SELECT_BAR access directions extended through the TG interiors rather
+than using the previously proven gap-facing pair.
 
-Likely access-direction issue to verify next:
-
-```text
-with nmos_side="left":
-  NMOS control outer access = W
-  PMOS control_bar outer access = E
-
-SELECT uses the proven outer pair:
-  VREF control_W -> VSS control_bar_E
-
-SELECT_BAR Attempt 3 used:
-  VREF control_bar_W -> VSS control_E
-```
-
-The latter pair points through the internal TG device arrangement rather than using the previously proven inter-child-gap accesses `VREF control_bar_E` and `VSS control_W`. This is a working hypothesis, not yet a proven root cause.
-
-### Attempt 4: single central trunk (accepted)
+### Attempt 4: single central trunk — accepted three-net checkpoint
 
 Observed on 2026-07-22 after commit `06220ad`:
 
 ```text
-SELECT_BAR strategy: reference_selector_central_gap_control
-SELECT_BAR accesses: VREF_TG__control_bar_E, VSS_TG__control_W
-SELECT_BAR topology: two horizontal branches, one central vertical trunk
+SELECT_BAR accesses: VREF_TG control_bar_E, VSS_TG control_W
+SELECT_BAR topology: two horizontal branches and one central vertical trunk
 SELECT_BAR bends: 2
-
 DRC passed: True
 DRC violations: 0
 extraction passed: True
 connectivity passed: True
 shared selector net count: 3
 pre-LVS checks passed: True
+visual inspection: accepted
 ```
 
-Visual inspection accepted the central-trunk topology. The route has no folded
-U-turn or close parallel vertical legs, the perimeter `SELECT` route remains
-separate from `SELECT_BAR`, and no device-interior crossing was observed.
+This remains the last accepted B0 selector boundary. It does not include shared
+VSS/VDD routing or independent LVS.
 
-This closes the three-net control/signal topology as a reusable pre-LVS
-checkpoint. The accepted run did not include the current VDD/VSS routes, and no
-independent Netgen comparison has yet been completed.
-
-### Attempt 5: via-free met2 supplies (rejected)
+### Attempt 5: via-free met2 supplies — rejected
 
 Observed on 2026-07-22 after commit `d582edc`:
 
 ```text
-SELECT strategy: reference_selector_north_perimeter_control
 SELECT length: 116.445
-SELECT bends: 4
-
-SELECT_BAR strategy: reference_selector_central_gap_control
 SELECT_BAR length: 20.485
-SELECT_BAR bends: 2
-
-VSS strategy: reference_selector_north_vss_rail
-VSS accesses: VREF_TG__vss_N, VSS_TG__vss_N, VSS_TG__input_E
 VSS length: 80.755
-
-VDD strategy: reference_selector_south_vdd_rail
-VDD accesses: VREF_TG__vdd_S, VSS_TG__vdd_S
 VDD length: 42.93
-
 DRC passed: True
 DRC violations: 0
 extraction passed: True
@@ -329,38 +264,21 @@ shared selector net count: 4
 pre-LVS checks passed: False
 ```
 
-The four matched nets were three Magic-generated unnamed nets plus `VSUBS`.
-Because Attempt 4 had already validated the unchanged three signal/control
-routes, the result is most consistent with a missing VDD connection. The
-multiplicity checker does not identify child-terminal positions, so this remains
-an evidence-backed inference rather than a terminal-level proof.
+The result was consistent with a missing VDD connection. Visual inspection also
+rejected the 5.68:1 control-length ratio and nested perimeter routing.
 
-Visual inspection rejected the geometry independently of connectivity. SELECT
-was 5.68 times longer than SELECT_BAR, VSS nested inside its full selector
-perimeter, and the long parallel paths would scale poorly across four banks.
-This attempt is DRC-clean but electrically incomplete and physically rejected.
-
-### Attempt 6: balanced horizontal met3 controls (rejected)
+### Attempt 6: balanced horizontal met3 controls — rejected
 
 Observed on 2026-07-23 after commit `cc49bdb`:
 
 ```text
-child orientations: VREF_TG=R0, VSS_TG=R180
-
+child placement: horizontal R0/R180
 SELECT length: 71.085
 SELECT vias: 2
-
-SELECT_BAR strategy: reference_selector_balanced_south_control
 SELECT_BAR length: 71.085
-SELECT_BAR bends: 4
 SELECT_BAR vias: 2
-
-VSS strategy: reference_selector_north_vss_rail
 VSS length: 98.54
-
-VDD strategy: reference_selector_central_lower_metal_vdd
 VDD length: 24.825
-
 DRC passed: True
 DRC violations: 0
 extraction passed: True
@@ -369,16 +287,59 @@ shared selector net count: 4
 pre-LVS checks passed: False
 ```
 
-The equal control lengths closed only the numerical symmetry invariant. Visual
-inspection still rejected the four-device horizontal row, both met3
-half-perimeters, and the large VSS service geometry. The shared-net result again
-contained three unnamed nets plus `VSUBS`; the fifth connection remained absent.
+Equal control lengths closed only the numerical symmetry invariant. The
+four-device row, met3 half-perimeters, and large VSS service geometry were
+visually rejected.
 
-The old example rendered a branched `RoutePlan` as one synthetic point chain, so
-the printed VSS sequence appeared to retrace itself even though its segments
-were independent branches. This was a diagnostic defect, not evidence of an
-actual doubled polygon. Future output prints every real segment and layer
-separately.
+### Attempt 7: family-composable vertical selector — root cause identified
+
+The first `/foss` run of the vertical architecture from `ff61776` used:
+
+```text
+placement: compact-intent vertical VREF_TG=R0 / VSS_TG=R180 pair
+SELECT: west met2 side bus
+SELECT_BAR: matched east met2 side bus
+COMMON: west met2-to-met3 transitioned trunk
+VSS: east/gap met2-to-met3 transitioned trunk
+VDD: direct inter-child met2 bridge
+```
+
+Observed acceptance state:
+
+```text
+DRC: clean
+extraction: passed
+shared selector net count: 4
+five-net connectivity: failed
+```
+
+The child-interface diagnostic showed that PMOS `vdd_*` did not remain a distinct
+VDD net. It merged into `VSUBS`. Layout inspection identified a PMOS VDD escape
+crossing an inherited outer substrate ring.
+
+This changed the diagnosis from “VDD is missing” to “VDD is shorted to
+substrate.” The former leaf profile requested body ties but left substrate taps,
+deep wells, guard rings, and dummies inherited from the installed gLayout
+defaults.
+
+The lost local workspace fixed this in commit `b7d80a6`, reported 100 tests
+passing, and remained one commit ahead of remote. That Git object was never
+published and could not be recovered. ADR 0005 and the current recovery branch
+reconstruct the same architectural correction:
+
+```text
+conductive body ties: on
+substrate taps: off
+deep wells: off
+guard rings: off
+dummies: off
+```
+
+The recovered intent rejects inherited or conflicting profiles before geometry
+generation. The diagnostic now prints the profile and normalized bbox size.
+
+No compact-profile physical result is claimed yet. The selector and base TG must
+be rerun in `/foss`.
 
 ## Current demonstrated boundary
 
@@ -390,13 +351,11 @@ parameterized 3/4/5-bit CDAC specifications
 schematic-independent CircuitManifest
 stable PlacementResult bindings
 algorithmic inversion-symmetric capacitor placement
-canonical MIM and MOS physical adapters
-conductive GF180 body-tie access contract
+canonical MIM and MOS access adapters
+measured conductive GF180 body-tie access grammar
 4 x 4 MIM array with zero DRC violations
-base TG with zero DRC violations
-base TG extraction and exact two-signal-net connectivity
-B0 selector with zero DRC violations
-B0 selector extraction and exact three-shared-net connectivity
+pre-recovery base TG with zero DRC violations and exact two-signal-net connectivity
+B0 selector with zero DRC violations and exact three-shared-net connectivity
 accepted single-trunk selector control topology
 straight, Manhattan, and external-dogleg routing regressions
 ```
@@ -404,32 +363,53 @@ straight, Manhattan, and external-dogleg routing regressions
 Not validated:
 
 ```text
+compact-profile base TG physical rerun
+compact-profile vertical R0/R180 B0 five-net selector
+proof that VDD remains distinct from VSUBS
+GF180 met2/met3 COMMON/VSS via execution under the compact leaf envelope
 scaled B1/B2/B3 selectors
-family-composable vertical R0/R180 B0 five-net selector
-GF180 met2/met3 COMMON/VSS via execution in the vertical topology
-B0 selector VDD/VSS route validation
-complete CDAC placement
-VOUT and bank routing
-committed routes as typed resources
-GF180 routing-rule and via resolution
-CDAC extraction/connectivity
+complete CDAC placement and routing
+CDAC extraction and exact connectivity
 independent schematic-to-layout Netgen LVS
 PVT, mismatch, or extracted-parasitic simulation
 ```
 
 ## Next physical checkpoint
 
-Validate the family-composable vertical R0/R180 five-net redesign:
+Run:
 
 ```bash
+python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
+python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
 python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
 ```
 
-The run must report:
+The diagnostic must report:
+
+```text
+explicit compact primitive profile:
+  ties=on
+  substrate_taps=off
+  deep_wells=off
+  guard_rings=off
+  dummies=off
+bbox sizes consistent with the compact leaf geometry
+four required bulk accesses per device
+```
+
+The base TG must retain:
+
+```text
+DRC violations: 0
+extraction passed: True
+shared signal net count: 2
+pre-LVS checks passed: True
+```
+
+The selector must report:
 
 ```text
 child orientations: VREF_TG=R0, VSS_TG=R180
-public ports: vref_E, vss_E, vdd_N, common_W, select_W, select_bar_E
 SELECT strategy: external_west_side_bus
 SELECT bends: 2
 SELECT vias: 0
@@ -442,26 +422,15 @@ COMMON vias: 2
 VSS strategy: transitioned_vertical_trunk_tree
 VSS vias: 3
 VDD strategy: vertical_gap_bridge
+DRC violations: 0
+extraction passed: True
+shared selector net count: 5
+pre-LVS checks passed: True
 ```
 
-The layout must be a compact vertical two-row pair, not another four-device
-horizontal row. Controls remain on the measured signal layer. COMMON uses two
-west-side transitions and VSS uses three east/gap-side transitions to the named
-generic upper layer. VDD uses the measured met2 N/S body-tie family and stays
-inside the actual vertical inter-child gap. Require zero DRC violations,
-successful extraction, exactly five shared child nets, and passing pre-LVS
-checks. The output now includes each child subcircuit's extracted
-terminal-to-net bindings; inspect those bindings before inferring which
-connection is missing. Branched routes are reported segment-by-segment and do
-not receive a synthetic bend count.
+The child-interface report must show VDD as an independent shared child net and
+must not map any PMOS VDD terminal to `VSUBS`. Visual inspection must confirm
+that no supply escape crosses an inherited outer ring.
 
-After that evidence is recorded, export independent schematic SPICE references
-and run Magic/Netgen LVS on the base TG and B0 selector before scaling the
-selector hierarchy. The five-net multiplicity check includes supply sharing but
-still does not substitute for a complete device-and-net comparison against the
-hand-authored schematics.
-
-After leaf LVS passes, validate B1/B2/B3 with the same flow. Full-CDAC LVS becomes
-meaningful only after all four selectors, the reset TG, all 16 MIM capacitors,
-top-level pins, and every signal, reference, control, supply, and bulk connection
-are present in one extracted layout netlist.
+After that evidence is recorded, run independent Magic/Netgen LVS on the base TG
+and B0 selector. Only then proceed to B1/B2/B3 scaling and full-CDAC assembly.
