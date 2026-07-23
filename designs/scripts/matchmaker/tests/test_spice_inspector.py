@@ -1,6 +1,9 @@
 import unittest
 
-from matchmaker.verification.netlist.spice_inspector import parse_spice_subcircuits
+from matchmaker.verification.netlist.spice_inspector import (
+    parse_spice_subcircuits,
+    render_subcircuit_instance_interfaces,
+)
 
 
 class SpiceInspectorTests(unittest.TestCase):
@@ -50,6 +53,29 @@ X4 other d child
     def test_unterminated_subcircuit_fails(self):
         with self.assertRaises(ValueError):
             parse_spice_subcircuits(".subckt demo A B\nR1 A B 1k\n")
+
+    def test_render_child_interfaces_binds_ports_to_extracted_nodes(self):
+        parsed = parse_spice_subcircuits(
+            """
+.subckt top
+XLEFT common select vdd child_a
+XRIGHT common select_bar vdd child_b
+.ends top
+.subckt child_a OUT CTRL BULK
+.ends child_a
+.subckt child_b OUT CTRL BULK
+.ends child_b
+"""
+        )
+        rendered = render_subcircuit_instance_interfaces(
+            parsed,
+            top_cell_name="top",
+            included_subcircuit_names=("child_a", "child_b"),
+        )
+        self.assertIn("OUT -> common", rendered)
+        self.assertIn("CTRL -> select", rendered)
+        self.assertIn("CTRL -> select_bar", rendered)
+        self.assertIn("BULK -> vdd", rendered)
 
 
 if __name__ == "__main__":

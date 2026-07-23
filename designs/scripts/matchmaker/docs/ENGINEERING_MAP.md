@@ -9,8 +9,8 @@ base: main
 branch: main (direct-update workflow)
 PR: none
 PR #1-#5: merged
-local checks: 91 pure-Python tests passing; source/examples compile
-active checkpoint: balanced R0/R180 B0 selector awaits /foss validation
+local checks: 99 pure-Python tests passing; source/examples compile
+active checkpoint: family-composable vertical B0 selector awaits /foss validation
 ```
 
 PR #5 merged the following validated boundary:
@@ -56,6 +56,10 @@ Schematics under `designs/libs/core_matchmaker/` are independent LVS references 
 10. Connectivity-changing work requires extraction or LVS evidence.
 11. Unsupported cases fail explicitly.
 12. Live state stays in this file; physical output stays in `VALIDATION_STATUS.md`.
+13. Device-family port grammar stays in family adapters; composition and route
+    templates cannot inspect family-specific names.
+14. A block planner binds logical roles to reusable placement/routing primitives;
+    it does not become a private geometry generator.
 
 ## Canonical pipeline
 
@@ -123,6 +127,7 @@ specs/
 placement/core/
   Tile, PlacementPlan, PlacedReferenceBinding, PlacementResult
   shared reference-orientation transform
+  generic runtime-envelope oriented-pair placement
 
 placement/cdac/capacitor_array_*.py
   algorithmic inversion-symmetric array planning and generation
@@ -131,7 +136,7 @@ placement/cdac/transmission_gate_*.py
   runtime-derived NMOS/PMOS placement
 
 placement/cdac/reference_selector_*.py
-  side-by-side R0/R180 placement of two identical generated TG children
+  thin selector binding over a vertical R0/R180 oriented pair
 
 primitives/
   GF180 MIM and MOS factory adapters
@@ -150,13 +155,22 @@ physical/transmission_gate_snapshot.py
   NMOS/PMOS child snapshot
 
 physical/reference_selector_snapshot.py
-  generated-TG child snapshot
+  generated-TG family contract binding
+
+physical/hierarchical_cell_snapshot.py
+  generic generated-child family adaptation
+
+physical/transmission_gate_cell_access.py
+  per-terminal generated-TG access capability rules
 
 routing/planners/transmission_gate_topology_planner.py
   two parallel signal-net RoutePlans
 
 routing/planners/reference_selector_topology_planner.py
-  balanced COMMON, SELECT, SELECT_BAR, VSS, VDD RoutePlans
+  selector role binding over generic corridor planners
+
+routing/planners/corridor_route_planner.py
+  family-agnostic side-bus, gap-bridge, and transitioned-tree RoutePlans
 
 routing/resources.py
   typed layer-transition resources resolved by the PDK adapter
@@ -175,6 +189,9 @@ generators/reference_selector_generator.py
 
 verification/netlist/shared_net_multiplicity.py
   exact participant-multiset and shared-net-count assertions
+
+verification/netlist/spice_inspector.py
+  extracted child-interface terminal-to-net diagnostics
 ```
 
 ## Physically validated tonight
@@ -446,66 +463,97 @@ checker does not prove terminal identity. Visual inspection also rejected the
 full-width SELECT loop, the nested SELECT/VSS perimeter routes, and the 5.68:1
 control-length ratio. DRC cleanliness did not make the layout acceptable.
 
-## Active balanced five-net redesign
+## Rejected balanced horizontal checkpoint
 
-ADR 0003 records the replacement architecture. Both selector children remain
-instances of the same generated TG cell; placement uses `R0` for `VREF_TG` and
-`R180` for `VSS_TG`. The builder transforms each reference before deriving its
-center and gap from the runtime envelopes. The snapshot keeps stable child port
-names, while the planner selects accesses by transformed physical orientation.
-No algorithm assumes that a name ending in `_E` still faces east after
-rotation.
-
-The resulting topology is:
+The 2026-07-23 `/foss` run of commit `cc49bdb` proved that matched lengths alone
+do not make an acceptable family template:
 
 ```text
-COMMON:
-  physical-east VREF output -> central met2 trunk -> physical-west VSS output
-
-SELECT / SELECT_BAR:
-  safe outward gate stubs on met2
-  two identical met2-to-met3 via stacks per control
-  rotationally symmetric north/south half-perimeter routes on met3
-  hard equality check on total control length
-
-VSS:
-  both physical-north NMOS ties + physical-east VSS input on met2
-  service channel placed outside the east control-via envelope
-
-VDD:
-  facing physical-east/west PMOS ties on measured met1
-  compact central strap with one south escape
+child placement: horizontal R0/R180
+SELECT length: 71.085
+SELECT_BAR length: 71.085
+SELECT_BAR bends: 4
+SELECT_BAR vias: 2
+VSS length: 98.54
+VDD length: 24.825
+Magic DRC violations: 0
+Magic extraction: passed
+shared selector net count: 4
+connectivity: failed
+pre-LVS checks: failed
 ```
 
-The generated control access supplies the transition's numeric source layer;
-policy selects only the generic upper routing layer (`met3`). The GF180 adapter
-resolves that upper layer, its minimum width, and the resulting via-stack
-envelope from the activated PDK. `ViaPlan` remains typed; the route executor
-receives an injected centered-via geometry factory and does not make layer or
-topology decisions. Plans fail before execution if transformed access order is
-wrong, the child gap cannot contain the via, via endpoints do not terminate
-segments on both layers, control lengths differ, or distinct nets touch on one
-routing layer.
+Visual inspection rejected the four-device row and its large north/south
+half-perimeters. VDD remained absent from the five-net multiplicity result. The
+old example also printed a branched tree as one synthetic point chain, creating
+a false apparent VSS backtrack; route diagnostics now print each real segment
+with its layer.
 
-This redesign removes the count-only VDD hypothesis from the algorithm: it uses
-the independently measured conductive met1 E/W tie family and must still prove
-the resulting VDD connection through extraction. It is locally regression-tested
-but has no DRC, extraction, connectivity, or LVS claim yet.
+## Active family-composable vertical redesign
+
+ADR 0004 supersedes the selector-specific placement/routing decision in ADR
+0003. The new architecture separates four reusable boundaries:
+
+```text
+family adapter
+  logical terminals <-> family port grammar
+
+oriented-pair composer
+  any two generated child families + axis/side/orientation/gap
+  -> runtime-envelope PlacementResult
+
+corridor planners
+  side bus / gap bridge / transitioned multi-terminal trunk
+  -> ordinary RoutePlan objects
+
+block binding
+  selector logical roles and matching constraints only
+```
+
+The transmission-gate family advertises access capability per logical terminal:
+signal routes expose only their proven exterior W/E ports, controls expose only
+the NMOS-west and PMOS-east sides, and body ties expose the vertical N/S sides
+used by stacked composition. A physical port that exists is not automatically a
+safe escape. The same hierarchical snapshot builder and corridor planners are
+regressed with resistor-, capacitor-, and transistor-style terminal names.
+Neither core layer imports `VREF`, `VSS`, `SELECT`, GF180 port names, or numeric
+layers.
+
+The B0 binding uses a vertical `VREF_TG=R0` / `VSS_TG=R180` pair:
+
+```text
+COMMON: two west met2 escapes, two vias, compact west met3 trunk
+SELECT: compact west met2 side bus
+SELECT_BAR: matched east met2 side bus
+VSS: two gap-facing body ties plus east input, three vias, east met3 trunk
+VDD: direct met2 bridge inside the true vertical inter-child gap
+```
+
+The selector policy names only generic `met3` for the COMMON/VSS upper trunks.
+The GF180 adapter resolves numeric layers, width, and via envelope. Via
+footprints are checked against other-net routes and other-net via footprints
+before execution. Exact child-interface port-to-net bindings are printed after
+extraction so a missing fifth net can be identified rather than inferred from a
+count.
+
+This candidate is locally regression-tested but has no DRC, extraction,
+connectivity, visual, or LVS claim.
 
 ### Exact next verification gate
 
 1. run the B0 selector generator in `/foss`;
-2. confirm child orientations `VREF_TG=R0` and `VSS_TG=R180`;
-3. require two vias on each control, zero vias on COMMON/VSS/VDD, equal SELECT
-   and SELECT_BAR lengths, and the expected met2/met3 control layers;
-4. require zero DRC violations, successful extraction, exactly five shared child
-   nets, and passing pre-LVS checks;
-5. visually confirm the controls form balanced half-perimeters, the VDD strap is
-   compact in the child gap, and the VSS service does not touch the east via;
-6. export independent schematic SPICE references for the base TG and B0 selector;
-7. pass Magic extraction and Netgen LVS for both leaf blocks;
-8. then validate B1/B2/B3 scaled selectors with the same DRC, extraction,
-   connectivity, visual, and LVS gates.
+2. confirm a vertical two-row `R0/R180` placement;
+3. require matched two-bend control side buses with zero control vias;
+4. require two COMMON vias on the west upper trunk, three VSS vias on the east
+   upper trunk, and a direct VDD bridge confined to the vertical child gap;
+5. require zero DRC violations, successful extraction, exactly five shared
+   child nets, and passing pre-LVS checks;
+6. inspect the printed child-interface terminal-to-net bindings and reject any
+   missing or merged terminal;
+7. visually reject renewed full-perimeter loops, same-layer touches, or a
+   four-device horizontal row;
+8. after acceptance, run independent base-TG and B0 Netgen LVS before scaling
+   B1/B2/B3.
 
 ## Work after selector closure
 
@@ -525,12 +573,13 @@ but has no DRC, extraction, connectivity, or LVS claim yet.
 ## Known debt
 
 ```text
-balanced five-net B0 selector is implemented but not physically validated
+family-composable vertical five-net B0 selector is not physically validated
 legacy MOS placement lacks PlacementResult
 committed routes are not typed resources
-routing remains primarily two-terminal
+generic transitioned-tree planning has no obstacle-aware candidate search yet
 GF180 routing resolution currently covers only the selector's met2/met3 transition
 via execution currently supports centered GF180 via stacks only
+composite external-pin escape planning is not yet generalized
 multi-terminal CDAC topology planning is absent
 independent schematic LVS has not passed
 stable logical identity is not preserved through extraction end-to-end

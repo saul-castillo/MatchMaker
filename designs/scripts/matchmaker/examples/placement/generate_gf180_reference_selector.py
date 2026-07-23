@@ -24,6 +24,10 @@ from matchmaker.verification.netlist.shared_net_multiplicity import (
     SharedNetMultiplicityExpectation,
     evaluate_extracted_shared_net_multiplicity,
 )
+from matchmaker.verification.netlist.spice_inspector import (
+    parse_spice_subcircuits,
+    render_subcircuit_instance_interfaces,
+)
 
 
 DEFAULT_CELL_NAME = "gf180_cdac_b0_reference_selector_demo"
@@ -84,19 +88,23 @@ def main() -> int:
     print("public ports: " + ", ".join(generated.public_port_names))
 
     for plan in generated.routes.plans:
-        points = [plan.segments[0].start]
-        points.extend(segment.end for segment in plan.segments)
         print(f"route {plan.net_name} strategy: {plan.strategy}")
         print(
             f"route {plan.net_name} accesses: "
             + ", ".join(plan.selected_access_point_names)
         )
         print(
-            f"route {plan.net_name} points: "
-            + " -> ".join(str(point) for point in points)
+            f"route {plan.net_name} segments: "
+            + " | ".join(
+                f"{segment.start}->{segment.end}@{segment.layer}"
+                for segment in plan.segments
+            )
         )
         print(f"route {plan.net_name} length: {plan.metrics.total_length}")
-        print(f"route {plan.net_name} bends: {plan.metrics.bend_count}")
+        if len(plan.terminals) > 2:
+            print(f"route {plan.net_name} bends: n/a (branched tree)")
+        else:
+            print(f"route {plan.net_name} bends: {plan.metrics.bend_count}")
         print(f"route {plan.net_name} vias: {plan.metrics.via_count}")
         print(f"route {plan.net_name} width: {plan.metrics.resolved_width}")
         print(
@@ -149,6 +157,14 @@ def main() -> int:
         generated.physical_design.instance(VREF_SWITCH_INSTANCE_NAME).cell_name,
         generated.physical_design.instance(VSS_SWITCH_INSTANCE_NAME).cell_name,
     )
+    extracted_subcircuits = parse_spice_subcircuits(
+        paths.extracted_netlist.read_text()
+    )
+    interface_report = render_subcircuit_instance_interfaces(
+        extracted_subcircuits,
+        top_cell_name=args.cell_name,
+        included_subcircuit_names=expected_cells,
+    )
     connectivity = evaluate_extracted_shared_net_multiplicity(
         netlist_path=paths.extracted_netlist,
         top_cell_name=args.cell_name,
@@ -161,10 +177,13 @@ def main() -> int:
             ),
         ),
     )
-    paths.connectivity_report.write_text(connectivity.render())
+    paths.connectivity_report.write_text(
+        connectivity.render() + "\n" + interface_report
+    )
     print(f"connectivity passed: {connectivity.passed}")
     print(f"shared selector net count: {len(connectivity.matched_nets)}")
     print("shared selector nets: " + ", ".join(connectivity.matched_nets))
+    print(interface_report, end="")
     print(f"connectivity report: {paths.connectivity_report}")
     if connectivity.failure_reason is not None:
         print(f"connectivity failure: {connectivity.failure_reason}")

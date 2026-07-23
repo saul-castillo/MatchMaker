@@ -340,6 +340,46 @@ was 5.68 times longer than SELECT_BAR, VSS nested inside its full selector
 perimeter, and the long parallel paths would scale poorly across four banks.
 This attempt is DRC-clean but electrically incomplete and physically rejected.
 
+### Attempt 6: balanced horizontal met3 controls (rejected)
+
+Observed on 2026-07-23 after commit `cc49bdb`:
+
+```text
+child orientations: VREF_TG=R0, VSS_TG=R180
+
+SELECT length: 71.085
+SELECT vias: 2
+
+SELECT_BAR strategy: reference_selector_balanced_south_control
+SELECT_BAR length: 71.085
+SELECT_BAR bends: 4
+SELECT_BAR vias: 2
+
+VSS strategy: reference_selector_north_vss_rail
+VSS length: 98.54
+
+VDD strategy: reference_selector_central_lower_metal_vdd
+VDD length: 24.825
+
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: False
+shared selector net count: 4
+pre-LVS checks passed: False
+```
+
+The equal control lengths closed only the numerical symmetry invariant. Visual
+inspection still rejected the four-device horizontal row, both met3
+half-perimeters, and the large VSS service geometry. The shared-net result again
+contained three unnamed nets plus `VSUBS`; the fifth connection remained absent.
+
+The old example rendered a branched `RoutePlan` as one synthetic point chain, so
+the printed VSS sequence appeared to retrace itself even though its segments
+were independent branches. This was a diagnostic defect, not evidence of an
+actual doubled polygon. Future output prints every real segment and layer
+separately.
+
 ## Current demonstrated boundary
 
 Validated:
@@ -365,8 +405,8 @@ Not validated:
 
 ```text
 scaled B1/B2/B3 selectors
-balanced R0/R180 B0 five-net selector
-GF180 met2/met3 control-via execution
+family-composable vertical R0/R180 B0 five-net selector
+GF180 met2/met3 COMMON/VSS via execution in the vertical topology
 B0 selector VDD/VSS route validation
 complete CDAC placement
 VOUT and bank routing
@@ -379,7 +419,7 @@ PVT, mismatch, or extracted-parasitic simulation
 
 ## Next physical checkpoint
 
-Validate the balanced R0/R180 five-net redesign:
+Validate the family-composable vertical R0/R180 five-net redesign:
 
 ```bash
 python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
@@ -389,21 +429,31 @@ The run must report:
 
 ```text
 child orientations: VREF_TG=R0, VSS_TG=R180
-SELECT strategy: reference_selector_balanced_north_control
-SELECT vias: 2
-SELECT_BAR strategy: reference_selector_balanced_south_control
-SELECT_BAR vias: 2
+public ports: vref_E, vss_E, vdd_N, common_W, select_W, select_bar_E
+SELECT strategy: external_west_side_bus
+SELECT bends: 2
+SELECT vias: 0
+SELECT_BAR strategy: external_east_side_bus
+SELECT_BAR bends: 2
+SELECT_BAR vias: 0
 SELECT length == SELECT_BAR length
-VSS strategy: reference_selector_north_vss_rail
-VDD strategy: reference_selector_central_lower_metal_vdd
+COMMON strategy: transitioned_vertical_trunk_tree
+COMMON vias: 2
+VSS strategy: transitioned_vertical_trunk_tree
+VSS vias: 3
+VDD strategy: vertical_gap_bridge
 ```
 
-The controls must show both the measured signal layer and the PDK-resolved met3
-layer. COMMON and VSS must remain on the signal layer with zero vias; VDD must
-use the measured lower-metal east/west ties with zero vias. Require zero DRC
-violations, successful extraction, exactly five shared child nets, and passing
-pre-LVS checks. Visually reject any same-layer touch, control-length asymmetry,
-device-interior escape, or renewed nested full-perimeter loop.
+The layout must be a compact vertical two-row pair, not another four-device
+horizontal row. Controls remain on the measured signal layer. COMMON uses two
+west-side transitions and VSS uses three east/gap-side transitions to the named
+generic upper layer. VDD uses the measured met2 N/S body-tie family and stays
+inside the actual vertical inter-child gap. Require zero DRC violations,
+successful extraction, exactly five shared child nets, and passing pre-LVS
+checks. The output now includes each child subcircuit's extracted
+terminal-to-net bindings; inspect those bindings before inferring which
+connection is missing. Branched routes are reported segment-by-segment and do
+not receive a synthetic bend count.
 
 After that evidence is recorded, export independent schematic SPICE references
 and run Magic/Netgen LVS on the base TG and B0 selector before scaling the

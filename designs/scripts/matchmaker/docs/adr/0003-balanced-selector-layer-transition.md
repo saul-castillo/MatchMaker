@@ -1,6 +1,11 @@
 # ADR 0003: Balanced selector controls use an explicit layer transition
 
-Status: Accepted
+Status: Superseded by ADR 0004
+
+The 2026-07-23 `/foss` run balanced the planned control lengths but retained a
+sprawling horizontal layout and failed five-net connectivity. ADR 0004 replaces
+this selector-specific physical topology with family-composable placement and
+routing primitives.
 
 ## Context
 

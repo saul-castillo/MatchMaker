@@ -99,42 +99,6 @@ def _add_route_midpoint_port(
     )
 
 
-def _add_southmost_route_port(component, *, name: str, plan) -> None:
-    south_segment = min(
-        plan.segments,
-        key=lambda segment: min(segment.start[1], segment.end[1]),
-    )
-    center = min(
-        (south_segment.start, south_segment.end),
-        key=lambda point: point[1],
-    )
-    component.add_port(
-        name=name,
-        center=center,
-        width=south_segment.width,
-        orientation=270.0,
-        layer=south_segment.layer,
-    )
-
-
-def _selected_access_for_terminal(
-    *,
-    physical_design: PhysicalDesignSnapshot,
-    plan,
-    terminal: TerminalRef,
-):
-    selected = tuple(
-        physical_design.access_point(name)
-        for name in plan.selected_access_point_names
-    )
-    matches = tuple(access for access in selected if access.terminal == terminal)
-    if len(matches) != 1:
-        raise RuntimeError(
-            f"route {plan.net_name!r} does not select exactly one {terminal} access"
-        )
-    return matches[0]
-
-
 def _promote_selector_ports(
     *,
     placement: PlacementResult,
@@ -145,54 +109,60 @@ def _promote_selector_ports(
     vref_input = unique_access_facing(
         physical_design,
         terminal=TerminalRef(VREF_SWITCH_INSTANCE_NAME, "input"),
-        orientation=180,
+        orientation=0,
         context="public selector input access",
     )
-    vss_input = _selected_access_for_terminal(
-        physical_design=physical_design,
-        plan=routes.vss_plan,
-        terminal=TerminalRef(VSS_SWITCH_INSTANCE_NAME, "input"),
+    vref_vdd = unique_access_facing(
+        physical_design,
+        terminal=TerminalRef(VREF_SWITCH_INSTANCE_NAME, "vdd"),
+        orientation=90,
+        context="public selector VDD access",
     )
     _copy_component_port(
         component,
-        new_name="vref_W",
+        new_name="vref_E",
         source_name=vref_input.name,
     )
     _copy_component_port(
         component,
-        new_name="vss_E",
-        source_name=vss_input.name,
-    )
-    _add_southmost_route_port(
-        component,
-        name="vdd_S",
-        plan=routes.vdd_plan,
+        new_name="vdd_N",
+        source_name=vref_vdd.name,
     )
     _add_route_midpoint_port(
         component,
-        name="common_N",
+        name="vss_E",
+        plan=routes.vss_plan,
+        orientation=0.0,
+        segment_orientation="vertical",
+    )
+    _add_route_midpoint_port(
+        component,
+        name="common_W",
         plan=routes.common_plan,
-        orientation=90.0,
+        orientation=180.0,
+        segment_orientation="vertical",
     )
     _add_route_midpoint_port(
         component,
-        name="select_N",
+        name="select_W",
         plan=routes.select_plan,
-        orientation=90.0,
+        orientation=180.0,
+        segment_orientation="vertical",
     )
     _add_route_midpoint_port(
         component,
-        name="select_bar_S",
+        name="select_bar_E",
         plan=routes.select_bar_plan,
-        orientation=270.0,
+        orientation=0.0,
+        segment_orientation="vertical",
     )
     return (
-        "vref_W",
+        "vref_E",
         "vss_E",
-        "vdd_S",
-        "common_N",
-        "select_N",
-        "select_bar_S",
+        "vdd_N",
+        "common_W",
+        "select_W",
+        "select_bar_E",
     )
 
 
@@ -222,21 +192,21 @@ def generate_reference_selector(
         vss_switch=vss_switch,
     )
     physical_design = create_reference_selector_child_snapshot(placement)
-    control_source_access = unique_access_facing(
+    upper_route_source_access = unique_access_facing(
         physical_design,
-        terminal=TerminalRef(VREF_SWITCH_INSTANCE_NAME, "control"),
+        terminal=TerminalRef(VREF_SWITCH_INSTANCE_NAME, "output"),
         orientation=180,
-        context="selector control transition source",
+        context="selector upper-route transition source",
     )
     via_geometry_factory = Gf180ViaGeometryFactory(gf180)
-    control_transition = via_geometry_factory.describe_transition(
-        source_layer=control_source_access.layer,
-        route_generic_layer=intent.policy.control_route_glayer,
+    upper_route_transition = via_geometry_factory.describe_transition(
+        source_layer=upper_route_source_access.layer,
+        route_generic_layer=intent.policy.upper_route_glayer,
     )
     routes = plan_reference_selector_topology(
         intent=intent,
         physical_design=physical_design,
-        control_transition=control_transition,
+        upper_route_transition=upper_route_transition,
     )
     executed_routes = tuple(
         execute_route_plan(

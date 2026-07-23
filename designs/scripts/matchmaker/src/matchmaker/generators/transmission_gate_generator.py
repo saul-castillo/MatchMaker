@@ -112,6 +112,7 @@ def _promote_public_ports(
             )
             public_ports.append(public_name)
 
+    for direction in intent.policy.control_directions:
         for logical_name, instance_name in (
             ("control", NMOS_INSTANCE_NAME),
             ("control_bar", PMOS_INSTANCE_NAME),

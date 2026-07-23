@@ -9,6 +9,25 @@ class SpiceSubcircuitInstance:
     subcircuit_name: str
     statement: str
 
+    def port_bindings(
+        self,
+        subcircuit: "SpiceSubcircuit",
+    ) -> tuple[tuple[str, str], ...]:
+        """Bind this instance's nodes to its referenced subcircuit interface."""
+
+        if self.subcircuit_name != subcircuit.name:
+            raise ValueError(
+                f"instance {self.name!r} references {self.subcircuit_name!r}, "
+                f"not {subcircuit.name!r}"
+            )
+        if len(self.nodes) != len(subcircuit.ports):
+            raise ValueError(
+                f"instance {self.name!r} has {len(self.nodes)} nodes but "
+                f"subcircuit {subcircuit.name!r} declares "
+                f"{len(subcircuit.ports)} ports"
+            )
+        return tuple(zip(subcircuit.ports, self.nodes))
+
 
 @dataclass(frozen=True)
 class SpiceSubcircuit:
@@ -154,3 +173,40 @@ def parse_spice_subcircuits(text: str) -> dict[str, SpiceSubcircuit]:
         raise ValueError(f"Unterminated .subckt block: {current_name}")
 
     return parsed
+
+
+def render_subcircuit_instance_interfaces(
+    subcircuits: dict[str, SpiceSubcircuit],
+    *,
+    top_cell_name: str,
+    included_subcircuit_names: tuple[str, ...] = (),
+) -> str:
+    """Render terminal-to-net bindings for selected top-level child families."""
+
+    top = subcircuits.get(top_cell_name)
+    if top is None:
+        raise ValueError(f"top subcircuit {top_cell_name!r} was not found")
+    included = frozenset(included_subcircuit_names)
+    instances = tuple(
+        instance
+        for instance in top.subcircuit_instances
+        if not included or instance.subcircuit_name in included
+    )
+    lines = [f"top: {top_cell_name}", "child interfaces:"]
+    for instance in instances:
+        child = subcircuits.get(instance.subcircuit_name)
+        if child is None:
+            lines.append(
+                f"  {instance.name}: {instance.subcircuit_name} "
+                "(definition unavailable)"
+            )
+            continue
+        try:
+            bindings = instance.port_bindings(child)
+        except ValueError as error:
+            lines.append(f"  {instance.name}: {error}")
+            continue
+        lines.append(f"  {instance.name}: {instance.subcircuit_name}")
+        for port_name, node_name in bindings:
+            lines.append(f"    {port_name} -> {node_name}")
+    return "\n".join(lines) + "\n"
