@@ -140,7 +140,7 @@ The two extracted shared nets contain exactly the generated NMOS and PMOS subcir
 
 ## B0 reference-selector validation history
 
-Command for all three attempts:
+Command for all four attempts:
 
 ```bash
 python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
@@ -243,6 +243,33 @@ SELECT_BAR Attempt 3 used:
 
 The latter pair points through the internal TG device arrangement rather than using the previously proven inter-child-gap accesses `VREF control_bar_E` and `VSS control_W`. This is a working hypothesis, not yet a proven root cause.
 
+### Attempt 4: single central trunk (accepted)
+
+Observed on 2026-07-22 after commit `06220ad`:
+
+```text
+SELECT_BAR strategy: reference_selector_central_gap_control
+SELECT_BAR accesses: VREF_TG__control_bar_E, VSS_TG__control_W
+SELECT_BAR topology: two horizontal branches, one central vertical trunk
+SELECT_BAR bends: 2
+
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: True
+shared selector net count: 3
+pre-LVS checks passed: True
+```
+
+Visual inspection accepted the central-trunk topology. The route has no folded
+U-turn or close parallel vertical legs, the perimeter `SELECT` route remains
+separate from `SELECT_BAR`, and no device-interior crossing was observed.
+
+This closes B0 as a reusable pre-LVS selector primitive. The result proves the
+three intended shared selector nets in the extracted hierarchy; it does not yet
+prove complete schematic equivalence because explicit VDD/VSS bulk/well routing
+and an independent Netgen comparison remain outstanding.
+
 ## Current demonstrated boundary
 
 Validated:
@@ -257,14 +284,15 @@ canonical MIM and MOS physical adapters
 4 x 4 MIM array with zero DRC violations
 base TG with zero DRC violations
 base TG extraction and exact two-signal-net connectivity
-hierarchical selector placement and reproducible route planning
+B0 selector with zero DRC violations
+B0 selector extraction and exact three-shared-net connectivity
+accepted single-trunk selector control topology
 straight, Manhattan, and external-dogleg routing regressions
 ```
 
 Not validated:
 
 ```text
-B0 selector as a reusable primitive
 scaled B1/B2/B3 selectors
 metal VDD/VSS access for generated MOS cells
 complete CDAC placement
@@ -278,27 +306,13 @@ PVT, mismatch, or extracted-parasitic simulation
 
 ## Next physical checkpoint
 
-The selector-connectivity branch now replaces the folded two-leg corridor with
-one bbox-derived central trunk using the electrically proven inter-child-gap
-access pair:
+Resolve explicit generated-MOS supply and bulk/well connectivity, then run
+independent Magic/Netgen LVS on the base TG and B0 selector before scaling the
+selector hierarchy. The existing pre-LVS checks intentionally cover only the
+signal/control shared-net multiplicities; they do not substitute for a complete
+device-and-net comparison against the hand-authored schematics.
 
-```text
-VREF control_bar_E
--> horizontal branch to a derived central x
--> one vertical trunk
--> horizontal branch to VSS control_W
-```
-
-This topology has pure-planner coverage but no new `/foss` evidence yet. Run the
-reference-selector generation example and inspect the GDS before changing the
-validated/not-validated boundary above.
-
-Required acceptance remains:
-
-```text
-DRC violations: 0
-extraction passed: True
-shared selector net count: 3
-pre-LVS checks passed: True
-visual topology accepted
-```
+After leaf LVS passes, validate B1/B2/B3 with the same flow. Full-CDAC LVS becomes
+meaningful only after all four selectors, the reset TG, all 16 MIM capacitors,
+top-level pins, and every signal, reference, control, supply, and bulk connection
+are present in one extracted layout netlist.

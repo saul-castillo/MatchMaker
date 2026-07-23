@@ -10,7 +10,7 @@ branch: main (direct-update workflow)
 PR: none
 PR #1-#5: merged
 local checks: 71 pure-Python tests passing; source/examples compile
-active checkpoint: single-trunk B0 selector topology; /foss validation pending
+active checkpoint: B0 selector pre-LVS closure passed in /foss; supply/bulk closure and leaf LVS next
 ```
 
 PR #5 merged the following validated boundary:
@@ -23,9 +23,9 @@ generated base transmission gate with DRC, extraction, and exact connectivity
 selector hierarchy, planner, failure history, and reproducible failing checkpoint
 ```
 
-The current selector-connectivity change only addresses the unresolved B0 control topology.
-Scaled selectors, complete CDAC placement, CDAC routing, supplies, and LVS remain
-outside its scope.
+The current `main` checkpoint closes the B0 selector control topology at the
+pre-LVS boundary. Scaled selectors, complete CDAC placement, CDAC routing,
+supplies, and independent LVS remain outside that demonstrated boundary.
 
 ## Source of truth
 
@@ -301,11 +301,12 @@ Attempt 3 instead used `VREF control_bar_W` and `VSS control_E`; those direction
 
 The pre-squash PR #5 history preserves the exact Attempt 2 route and confirms that
 `VREF control_bar_E` and `VSS control_W` produced DRC-clean geometry and all three
-expected extracted shared nets. The original extracted netlist was not committed,
-so the access-direction root-cause diagnosis remains a hypothesis until the new
-topology is rerun in `/foss`.
+expected extracted shared nets. The accepted central-trunk run now independently
+confirms that this inner-gap pair extracts correctly. Because both the access pair
+and route shape differ from Attempt 3, the result does not isolate access direction
+as the sole cause of that attempt's failure.
 
-## Active selector-connectivity checkpoint
+## Validated B0 selector checkpoint
 
 Implemented directly on `main` for this checkpoint:
 
@@ -331,39 +332,54 @@ This removes the U-turn and close parallel legs while retaining the access pair
 that previously extracted correctly. It still emits ordinary `RoutePlan`
 segments and uses the existing mechanical executor.
 
-### Exact next physical gate
+Observed in the Chipathon `/foss` environment on 2026-07-22:
 
-1. Run `generate_gf180_reference_selector.py` in the Chipathon `/foss`
-   environment.
-2. Confirm the reported `SELECT_BAR` access pair, three-segment central-trunk
-   topology, and trunk-centered public port.
-3. Require DRC=0, extraction passed, exact shared selector net count=3, and
-   pre-LVS checks passed.
-4. Visually reject any device-interior crossing, narrow parallel-leg coupling,
-   or unintended asymmetry.
-5. Only after that evidence passes, update `VALIDATION_STATUS.md` and treat B0 as
-   a reusable selector primitive.
-6. Only then validate B1/B2/B3 scaled selectors.
+```text
+SELECT_BAR accesses: VREF_TG__control_bar_E, VSS_TG__control_W
+SELECT_BAR topology: two horizontal branches, one central vertical trunk
+SELECT_BAR bends: 2
+Magic DRC violations: 0
+Magic extraction: passed
+connectivity: passed
+exact shared selector nets: 3
+pre-LVS checks: passed
+visual inspection: accepted
+```
+
+This closes B0 as a reusable pre-LVS selector primitive. It is not a full LVS
+claim: the generated TG hierarchy still intentionally omits explicit metal
+VDD/VSS and bulk/well connections, and no independent schematic netlist has yet
+been compared with the extracted layout.
+
+### Exact next verification gate
+
+1. identify and model the installed GF180 MOS metal supply/tap access contract;
+2. add explicit NMOS bulk/VSS and PMOS bulk/VDD topology to the base TG;
+3. promote stable supply ports through the B0 selector hierarchy;
+4. export independent schematic SPICE references for the base TG and B0 selector;
+5. pass Magic extraction and Netgen LVS for both leaf blocks;
+6. then validate B1/B2/B3 scaled selectors with the same DRC, extraction,
+   connectivity, visual, and LVS gates.
 
 ## Work after selector closure
 
 ```text
-1. validate B1/B2/B3 selector widths through the same generator
-2. define complete CDAC macro placement intent
-3. place capacitor array, four selectors, and reset TG
-4. run whole-placement Magic DRC
-5. add committed routes as typed physical resources
-6. add VOUT, B0, and reset topology planning
-7. extend to remaining bank/reference/control/supply nets
-8. add GF180 layer/width/via resolution as required
-9. run extraction, exact connectivity, and independent Netgen LVS
+1. close TG/selector supply and bulk topology and pass leaf-cell Netgen LVS
+2. validate B1/B2/B3 selector widths through the same generator and LVS flow
+3. define complete CDAC macro placement intent
+4. place capacitor array, four selectors, and reset TG
+5. run whole-placement Magic DRC
+6. add committed routes as typed physical resources
+7. add VOUT, B0, and reset topology planning
+8. extend to remaining bank/reference/control/supply nets
+9. add GF180 layer/width/via resolution as required
+10. run full-CDAC extraction, exact connectivity, and independent Netgen LVS
 ```
 
 ## Known debt
 
 ```text
 metal VDD/VSS access for generated TGs is unresolved
-reference-selector control connectivity is unresolved
 legacy MOS placement lacks PlacementResult
 committed routes are not typed resources
 routing is primarily two-terminal and same-layer
