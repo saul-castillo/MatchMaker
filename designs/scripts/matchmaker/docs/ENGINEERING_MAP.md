@@ -9,8 +9,8 @@ base: main
 branch: main (direct-update workflow)
 PR: none
 PR #1-#5: merged
-local checks: 73 pure-Python tests passing; source/examples compile
-active checkpoint: metal bulk-tie access model and TG supply-port promotion await /foss validation
+local checks: 76 pure-Python tests passing; source/examples compile
+active checkpoint: via-free B0 VSS/VDD topology awaits /foss validation
 ```
 
 PR #5 merged the following validated boundary:
@@ -150,7 +150,7 @@ routing/planners/transmission_gate_topology_planner.py
   two parallel signal-net RoutePlans
 
 routing/planners/reference_selector_topology_planner.py
-  COMMON, SELECT, SELECT_BAR RoutePlans
+  COMMON, SELECT, SELECT_BAR, VSS, VDD RoutePlans
 
 generators/transmission_gate_generator.py
   end-to-end TG generation
@@ -206,6 +206,27 @@ PMOS W=8 µm, L=0.28 µm
 
 Simple `gate/source/drain` cardinal accesses share one runtime metal layer. One runtime-derived PMOS translation aligns the source and drain signal nets.
 
+The corrected conductive bulk-tie contract was measured in `/foss` on
+2026-07-23:
+
+```text
+NMOS and PMOS terminal counts:
+  gate=4, source=4, drain=4, bulk=4
+
+tie_N_top_met_N and tie_S_top_met_S:
+  layer: (36, 0)
+  width: 3.16 µm
+
+tie_E_top_met_E and tie_W_top_met_W:
+  layer: (34, 0)
+  NMOS width: 7.81 µm
+  PMOS width: 11.81 µm
+```
+
+The four `well_*` boundaries remain unclassified geometry, not electrical
+ports. The north/south body ties therefore share met2 `(36, 0)` with the TG
+signal accesses and permit direct same-layer selector supply routing.
+
 Generated TG result:
 
 ```text
@@ -217,6 +238,7 @@ Magic DRC violations: 0
 Magic extraction: passed
 exact shared signal nets: 2
 pre-LVS checks: passed
+promoted ports: vss_{N,E,S,W}, vdd_{N,E,S,W}
 ```
 
 This closes the base/reset TG as a validated pre-LVS generator primitive.
@@ -349,15 +371,14 @@ pre-LVS checks: passed
 visual inspection: accepted
 ```
 
-This closes B0 as a reusable pre-LVS selector primitive. It is not a full LVS
-claim: the B0 hierarchy still omits shared VDD/VSS routing, its newly promoted
-leaf supply candidates are not physically validated, and no independent
-schematic netlist has yet been compared with the extracted layout.
+This closes the three-net control/signal topology as a reusable pre-LVS
+checkpoint. That accepted run predates the current VDD/VSS routes, and no
+independent schematic netlist has yet been compared with the extracted layout.
 
-## Active supply-access checkpoint
+## Active B0 supply-routing checkpoint
 
 The installed gLayout primitive source distinguishes conductive body ties from
-well boundaries. MatchMaker now models only the exact cardinal body-tie metal
+well boundaries. MatchMaker models only the exact cardinal body-tie metal
 exports:
 
 ```text
@@ -367,29 +388,48 @@ tie_S_top_met_S
 tie_W_top_met_W
 ```
 
-The base TG intent explicitly requests `with_tie=True`; its device snapshot now
+The base TG intent explicitly requests `with_tie=True`; its device snapshot
 requires a bulk terminal and rejects `well_*` as routing access. The generator
 promotes each NMOS tie as `vss_{N,E,S,W}` and each PMOS tie as
-`vdd_{N,E,S,W}`. Substrate-tap, deep-well, tie-layer, selector-rail, and LVS
-policy remain unchanged until the installed GF180 geometry is measured.
+`vdd_{N,E,S,W}`. The `/foss` diagnostic and generation run confirm that this
+contract preserves zero DRC violations, successful extraction, and the exact
+two TG signal nets.
 
-This is an unvalidated access-contract checkpoint. It does not yet claim that
-the promoted pins extract as the MOS body nets, share a usable routing layer,
-remain DRC-clean, or match the schematic.
+The selector snapshot now includes `vss` and `vdd` child terminals. The B0
+planner uses the measured same-layer contract without vias:
+
+```text
+VSS:
+  VREF_TG vss_N + VSS_TG vss_N + VSS_TG input_E
+  north rail inside the existing SELECT perimeter
+  right-side service channel to the low-reference input
+
+VDD:
+  VREF_TG vdd_S + VSS_TG vdd_S
+  separate south rail below both child envelopes
+```
+
+Supply width is explicit policy when overridden. By default it derives from
+the narrowest selected supply/signal access, which resolves to 0.5 µm for B0.
+Lane coordinates derive from runtime child bboxes and the existing SELECT
+channel. The planner fails if the north/right lane cannot contain the resolved
+width or if the chosen ports do not face their channels. The generator now
+expects five exact child-shared nets: `COMMON`, `SELECT`, `SELECT_BAR`, `VSS`,
+and `VDD`.
+
+This route topology is locally regression-tested but not yet physically
+validated. It makes no LVS claim.
 
 ### Exact next verification gate
 
-1. run the focused MOS diagnostic in `/foss` and confirm four cardinal `tie_*`
-   bulk accesses per device, including their runtime layers and widths;
-2. rerun the base TG generator and confirm the promoted VSS/VDD pins preserve
-   zero DRC violations, extraction, and exact two-signal-net connectivity;
-3. choose the selector supply-rail topology from the observed layer contract,
-   adding explicit via planning only if the body ties and signal-level VSS do
-   not share a layer;
-4. connect NMOS bulk/VSS and PMOS bulk/VDD through the B0 hierarchy;
-5. export independent schematic SPICE references for the base TG and B0 selector;
-6. pass Magic extraction and Netgen LVS for both leaf blocks;
-7. then validate B1/B2/B3 scaled selectors with the same DRC, extraction,
+1. run the B0 selector generator in `/foss`;
+2. require zero DRC violations, successful extraction, and exactly five shared
+   child nets;
+3. visually confirm that VSS remains inside the SELECT perimeter, VDD remains
+   south of both children, and neither rail touches the control topology;
+4. export independent schematic SPICE references for the base TG and B0 selector;
+5. pass Magic extraction and Netgen LVS for both leaf blocks;
+6. then validate B1/B2/B3 scaled selectors with the same DRC, extraction,
    connectivity, visual, and LVS gates.
 
 ## Work after selector closure
@@ -410,8 +450,7 @@ remain DRC-clean, or match the schematic.
 ## Known debt
 
 ```text
-metal VDD/VSS access for generated TGs is modeled but not physically validated
-selector supply rails are not planned
+selector supply rails are implemented but not physically validated
 legacy MOS placement lacks PlacementResult
 committed routes are not typed resources
 routing is primarily two-terminal and same-layer

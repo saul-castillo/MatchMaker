@@ -12,9 +12,6 @@ from matchmaker.physical.models import PhysicalDesignSnapshot
 from matchmaker.physical.reference_selector_snapshot import (
     create_reference_selector_child_snapshot,
 )
-from matchmaker.physical.transmission_gate_cell_access import (
-    TransmissionGateCellAccessPolicy,
-)
 from matchmaker.placement.cdac.reference_selector_builder import (
     build_reference_selector_child_placement,
 )
@@ -116,6 +113,12 @@ def _promote_selector_ports(
     )
     _add_route_midpoint_port(
         component,
+        name="vdd_S",
+        plan=routes.vdd_plan,
+        orientation=270.0,
+    )
+    _add_route_midpoint_port(
+        component,
         name="common_N",
         plan=routes.common_plan,
         orientation=90.0,
@@ -133,7 +136,14 @@ def _promote_selector_ports(
         orientation=270.0,
         segment_orientation="vertical",
     )
-    return ("vref_W", "vss_E", "common_N", "select_N", "select_bar_S")
+    return (
+        "vref_W",
+        "vss_E",
+        "vdd_S",
+        "common_N",
+        "select_N",
+        "select_bar_S",
+    )
 
 
 def generate_reference_selector(
@@ -161,10 +171,7 @@ def generate_reference_selector(
         vref_switch=vref_switch,
         vss_switch=vss_switch,
     )
-    physical_design = create_reference_selector_child_snapshot(
-        placement,
-        access_policy=TransmissionGateCellAccessPolicy(directions=("W", "E")),
-    )
+    physical_design = create_reference_selector_child_snapshot(placement)
     routes = plan_reference_selector_topology(
         intent=intent,
         physical_design=physical_design,

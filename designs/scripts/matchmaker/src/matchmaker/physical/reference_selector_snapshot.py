@@ -15,7 +15,13 @@ from matchmaker.physical.transmission_gate_cell_access import (
 from matchmaker.placement.core.placement_result import PlacementResult
 
 
-_REQUIRED_TERMINALS = frozenset({"input", "output", "control", "control_bar"})
+_REQUIRED_TERMINALS = frozenset(
+    {"input", "output", "control", "control_bar", "vss", "vdd"}
+)
+_SELECTOR_CHILD_ACCESS_POLICY = TransmissionGateCellAccessPolicy(
+    terminals=("input", "output", "control", "control_bar", "vss", "vdd"),
+    directions=("W", "E", "N", "S"),
+)
 
 
 def _normalize_layer(layer):
@@ -41,7 +47,7 @@ def create_reference_selector_child_snapshot(
 ) -> PhysicalDesignSnapshot:
     """Adapt two placed generated transmission-gate cells into routing state."""
 
-    access_policy = access_policy or TransmissionGateCellAccessPolicy()
+    access_policy = access_policy or _SELECTOR_CHILD_ACCESS_POLICY
     component = placement.component
     instances: dict[str, PlacedInstance] = {}
     access_points: dict[str, AccessPoint] = {}

@@ -26,7 +26,8 @@ Earlier direct and layer-only routes were DRC-clean but electrically connected i
 
 ## PR #5 CDAC foundation
 
-All observations below were made on 2026-07-17 in `/foss` using `gf180mcuD`.
+Initial observations below were made on 2026-07-17 in `/foss` using
+`gf180mcuD`; later reruns are dated where recorded.
 
 ### Installed GF180 MIM primitive
 
@@ -100,13 +101,31 @@ PMOS: W=8.0 µm, L=0.28 µm
   canonical ports: 16
 ```
 
-Both devices expose cardinal gate/source/drain accesses on the observed runtime metal layer `(36, 0)`. E/W signal widths are 0.5 µm. `well_*` ports are well-definition boundaries and are not accepted as VDD/VSS metal accesses.
+Both devices expose cardinal gate/source/drain accesses on the observed runtime
+metal layer `(36, 0)`. E/W signal widths are 0.5 µm. `well_*` ports are
+well-definition boundaries and are not accepted as VDD/VSS metal accesses.
 
-The historical `canonical external port count: 16` above was emitted by the
-former adapter, which still classified four `well_*` boundaries as bulk
-accesses. It therefore proves neither conductive body-tie access nor supply
-connectivity. Main now recognizes only exact cardinal `tie_*_top_met_*` exports
-as bulk, but that revised contract has not yet been run in `/foss`.
+The corrected adapter was rerun in `/foss` on 2026-07-23. Each device reported
+exactly four accesses for every required terminal:
+
+```text
+bulk=4, drain=4, gate=4, source=4
+
+NMOS tie_N_top_met_N: layer (36, 0), width 3.16
+NMOS tie_S_top_met_S: layer (36, 0), width 3.16
+NMOS tie_E_top_met_E: layer (34, 0), width 7.81
+NMOS tie_W_top_met_W: layer (34, 0), width 7.81
+
+PMOS tie_N_top_met_N: layer (36, 0), width 3.16
+PMOS tie_S_top_met_S: layer (36, 0), width 3.16
+PMOS tie_E_top_met_E: layer (34, 0), width 11.81
+PMOS tie_W_top_met_W: layer (34, 0), width 11.81
+```
+
+The diagnostic separately reported four unclassified `well_*` boundaries for
+each device, confirming that they are excluded from the conductive bulk
+contract. The N/S ties share met2 `(36, 0)` with signal-level VSS, so the B0
+selector does not need a via to close its supply topology.
 
 ### Generated base/reset transmission gate
 
@@ -121,6 +140,7 @@ generated bbox: (-16.48, -11.565) to (11.49, 10.065)
 instances: 2
 canonical accesses: 32
 obstacles: 2
+public supply ports: vss_N/E/S/W, vdd_N/E/S/W
 
 input route:
   NMOS__source_E -> PMOS__source_W
@@ -143,6 +163,11 @@ pre-LVS checks passed: True
 ```
 
 The two extracted shared nets contain exactly the generated NMOS and PMOS subcircuits as their complete participant multiset. This closes the base TG as a validated pre-LVS generator primitive. Supply connection and independent schematic LVS remain separate gates.
+
+The 2026-07-23 rerun retained all of these results after replacing the former
+`well_*` classification with conductive body ties. The unnamed-cell warning
+from GDS writing is informational; generation and every verification gate
+completed successfully.
 
 ## B0 reference-selector validation history
 
@@ -271,10 +296,9 @@ Visual inspection accepted the central-trunk topology. The route has no folded
 U-turn or close parallel vertical legs, the perimeter `SELECT` route remains
 separate from `SELECT_BAR`, and no device-interior crossing was observed.
 
-This closes B0 as a reusable pre-LVS selector primitive. The result proves the
-three intended shared selector nets in the extracted hierarchy; it does not yet
-prove complete schematic equivalence because explicit VDD/VSS bulk/well routing
-and an independent Netgen comparison remain outstanding.
+This closes the three-net control/signal topology as a reusable pre-LVS
+checkpoint. The accepted run did not include the current VDD/VSS routes, and no
+independent Netgen comparison has yet been completed.
 
 ## Current demonstrated boundary
 
@@ -287,6 +311,7 @@ schematic-independent CircuitManifest
 stable PlacementResult bindings
 algorithmic inversion-symmetric capacitor placement
 canonical MIM and MOS physical adapters
+conductive GF180 body-tie access contract
 4 x 4 MIM array with zero DRC violations
 base TG with zero DRC violations
 base TG extraction and exact two-signal-net connectivity
@@ -300,7 +325,7 @@ Not validated:
 
 ```text
 scaled B1/B2/B3 selectors
-metal VDD/VSS access for generated MOS cells
+B0 selector VDD/VSS route validation
 complete CDAC placement
 VOUT and bank routing
 committed routes as typed resources
@@ -312,26 +337,24 @@ PVT, mismatch, or extracted-parasitic simulation
 
 ## Next physical checkpoint
 
-Validate the revised conductive bulk-tie contract first:
+Validate the new via-free B0 supply topology:
 
 ```bash
-python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
-python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
+python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
 ```
 
-The diagnostic must report exactly four `bulk` accesses per device, named
-`tie_N_top_met_N`, `tie_E_top_met_E`, `tie_S_top_met_S`, and
-`tie_W_top_met_W`, along with their runtime layers and widths. The TG run must
-show promoted `vss_*`/`vdd_*` ports while retaining zero DRC violations,
-successful extraction, and exactly two shared signal nets. Any missing tie,
-unexpected layer split, DRC failure, or connectivity change blocks selector
-supply routing.
+The run must report `reference_selector_north_vss_rail` using both `vss_N`
+child accesses plus `VSS_TG__input_E`, and
+`reference_selector_south_vdd_rail` using both `vdd_S` accesses. Both plans
+must remain on `(36, 0)` with zero vias. Require zero DRC violations,
+successful extraction, exactly five shared child nets, and passing pre-LVS
+checks. Visually inspect the new rails before accepting the checkpoint.
 
-After that evidence is recorded, add explicit generated-MOS supply topology and
-run independent Magic/Netgen LVS on the base TG and B0 selector before scaling
-the selector hierarchy. The existing pre-LVS checks intentionally cover only
-the signal/control shared-net multiplicities; they do not substitute for a
-complete device-and-net comparison against the hand-authored schematics.
+After that evidence is recorded, export independent schematic SPICE references
+and run Magic/Netgen LVS on the base TG and B0 selector before scaling the
+selector hierarchy. The five-net multiplicity check includes supply sharing but
+still does not substitute for a complete device-and-net comparison against the
+hand-authored schematics.
 
 After leaf LVS passes, validate B1/B2/B3 with the same flow. Full-CDAC LVS becomes
 meaningful only after all four selectors, the reset TG, all 16 MIM capacitors,

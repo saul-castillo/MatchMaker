@@ -18,6 +18,7 @@ class ReferenceSelectorLayoutPolicy:
     child_gap: float = 4.0
     channel_clearance: float = 2.0
     route_width: float | None = None
+    supply_route_width: float | None = None
     alignment_tolerance: float = 1e-6
 
     def __post_init__(self) -> None:
@@ -29,6 +30,10 @@ class ReferenceSelectorLayoutPolicy:
             )
         if self.route_width is not None and self.route_width <= 0:
             raise ValueError("reference-selector route_width must be positive")
+        if self.supply_route_width is not None and self.supply_route_width <= 0:
+            raise ValueError(
+                "reference-selector supply_route_width must be positive"
+            )
         if self.alignment_tolerance < 0:
             raise ValueError("alignment_tolerance must be non-negative")
 

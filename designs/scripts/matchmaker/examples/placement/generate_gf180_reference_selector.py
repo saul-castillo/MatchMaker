@@ -33,8 +33,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
             "Generate the B0 VREF/VSS selector from typed intent, run Magic "
-            "DRC/extraction, and require three shared nets between its two "
-            "transmission-gate children."
+            "DRC/extraction, and require five shared signal/control/supply nets "
+            "between its two transmission-gate children."
         )
     )
     parser.add_argument(
@@ -136,10 +136,10 @@ def main() -> int:
         top_cell_name=args.cell_name,
         expectation=SharedNetMultiplicityExpectation(
             expected_subcircuit_names=expected_cells,
-            expected_match_count=3,
+            expected_match_count=5,
             description=(
                 "reference-selector child switches share exactly COMMON, SELECT, "
-                "and SELECT_BAR"
+                "SELECT_BAR, VSS, and VDD"
             ),
         ),
     )
