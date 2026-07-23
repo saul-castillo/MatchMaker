@@ -171,7 +171,7 @@ completed successfully.
 
 ## B0 reference-selector validation history
 
-Command for all four attempts:
+Command for the recorded selector attempts:
 
 ```bash
 python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
@@ -300,6 +300,46 @@ This closes the three-net control/signal topology as a reusable pre-LVS
 checkpoint. The accepted run did not include the current VDD/VSS routes, and no
 independent Netgen comparison has yet been completed.
 
+### Attempt 5: via-free met2 supplies (rejected)
+
+Observed on 2026-07-22 after commit `d582edc`:
+
+```text
+SELECT strategy: reference_selector_north_perimeter_control
+SELECT length: 116.445
+SELECT bends: 4
+
+SELECT_BAR strategy: reference_selector_central_gap_control
+SELECT_BAR length: 20.485
+SELECT_BAR bends: 2
+
+VSS strategy: reference_selector_north_vss_rail
+VSS accesses: VREF_TG__vss_N, VSS_TG__vss_N, VSS_TG__input_E
+VSS length: 80.755
+
+VDD strategy: reference_selector_south_vdd_rail
+VDD accesses: VREF_TG__vdd_S, VSS_TG__vdd_S
+VDD length: 42.93
+
+DRC passed: True
+DRC violations: 0
+extraction passed: True
+connectivity passed: False
+shared selector net count: 4
+pre-LVS checks passed: False
+```
+
+The four matched nets were three Magic-generated unnamed nets plus `VSUBS`.
+Because Attempt 4 had already validated the unchanged three signal/control
+routes, the result is most consistent with a missing VDD connection. The
+multiplicity checker does not identify child-terminal positions, so this remains
+an evidence-backed inference rather than a terminal-level proof.
+
+Visual inspection rejected the geometry independently of connectivity. SELECT
+was 5.68 times longer than SELECT_BAR, VSS nested inside its full selector
+perimeter, and the long parallel paths would scale poorly across four banks.
+This attempt is DRC-clean but electrically incomplete and physically rejected.
+
 ## Current demonstrated boundary
 
 Validated:
@@ -325,6 +365,8 @@ Not validated:
 
 ```text
 scaled B1/B2/B3 selectors
+balanced R0/R180 B0 five-net selector
+GF180 met2/met3 control-via execution
 B0 selector VDD/VSS route validation
 complete CDAC placement
 VOUT and bank routing
@@ -337,18 +379,31 @@ PVT, mismatch, or extracted-parasitic simulation
 
 ## Next physical checkpoint
 
-Validate the new via-free B0 supply topology:
+Validate the balanced R0/R180 five-net redesign:
 
 ```bash
 python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
 ```
 
-The run must report `reference_selector_north_vss_rail` using both `vss_N`
-child accesses plus `VSS_TG__input_E`, and
-`reference_selector_south_vdd_rail` using both `vdd_S` accesses. Both plans
-must remain on `(36, 0)` with zero vias. Require zero DRC violations,
-successful extraction, exactly five shared child nets, and passing pre-LVS
-checks. Visually inspect the new rails before accepting the checkpoint.
+The run must report:
+
+```text
+child orientations: VREF_TG=R0, VSS_TG=R180
+SELECT strategy: reference_selector_balanced_north_control
+SELECT vias: 2
+SELECT_BAR strategy: reference_selector_balanced_south_control
+SELECT_BAR vias: 2
+SELECT length == SELECT_BAR length
+VSS strategy: reference_selector_north_vss_rail
+VDD strategy: reference_selector_central_lower_metal_vdd
+```
+
+The controls must show both the measured signal layer and the PDK-resolved met3
+layer. COMMON and VSS must remain on the signal layer with zero vias; VDD must
+use the measured lower-metal east/west ties with zero vias. Require zero DRC
+violations, successful extraction, exactly five shared child nets, and passing
+pre-LVS checks. Visually reject any same-layer touch, control-length asymmetry,
+device-interior escape, or renewed nested full-perimeter loop.
 
 After that evidence is recorded, export independent schematic SPICE references
 and run Magic/Netgen LVS on the base TG and B0 selector before scaling the

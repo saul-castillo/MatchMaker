@@ -22,6 +22,7 @@ from matchmaker.placement.cdac.reference_selector_intent import (
 from matchmaker.routing.planners.reference_selector_topology_planner import (
     plan_reference_selector_topology,
 )
+from matchmaker.routing.resources import RoutingLayerTransition
 from matchmaker.specs.mos_device_spec import MosDeviceSpec
 from matchmaker.specs.transmission_gate_spec import (
     ReferenceSelectorSpec,
@@ -69,6 +70,10 @@ class TransmissionGateCellAccessTests(unittest.TestCase):
 
 
 class ReferenceSelectorTopologyTests(unittest.TestCase):
+    signal_layer = (88, 2)
+    lower_supply_layer = (77, 1)
+    control_route_layer = (99, 3)
+
     def _intent(self, *, route_width=None, supply_route_width=None):
         return ReferenceSelectorLayoutIntent(
             spec=ReferenceSelectorSpec(
@@ -87,30 +92,153 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
             ),
         )
 
+    def _transition(
+        self,
+        *,
+        source_layer=None,
+        via_size=(0.8, 0.8),
+        minimum_route_width=0.4,
+    ):
+        return RoutingLayerTransition(
+            source_layer=source_layer or self.signal_layer,
+            route_layer=self.control_route_layer,
+            via_name="via_stack",
+            via_size=via_size,
+            minimum_route_width=minimum_route_width,
+        )
+
     def _snapshot(
         self,
         *,
-        second_layer=None,
+        second_output_layer=None,
         right_xmin=4.0,
         vref_select_bar_x=-0.5,
+        vdd_layer=None,
+        select_right_y=2.0,
     ):
-        layer = (88, 2)
+        signal = self.signal_layer
+        lower = vdd_layer or self.lower_supply_layer
         definitions = (
-            (VREF_SWITCH_INSTANCE_NAME, "output", "output_E", (0.0, 0.0), 0.7, layer),
-            (VSS_SWITCH_INSTANCE_NAME, "output", "output_W", (right_xmin, 0.0), 0.9, second_layer or layer),
-            (VSS_SWITCH_INSTANCE_NAME, "input", "input_E", (right_xmin + 2.0, 1.5), 0.4, layer),
-            (VREF_SWITCH_INSTANCE_NAME, "control", "control_W", (-2.0, 1.0), 0.5, layer),
-            (VSS_SWITCH_INSTANCE_NAME, "control_bar", "control_bar_E", (right_xmin + 2.0, -2.0), 0.6, layer),
-            (VREF_SWITCH_INSTANCE_NAME, "control_bar", "control_bar_E", (vref_select_bar_x, -1.0), 0.55, layer),
-            (VSS_SWITCH_INSTANCE_NAME, "control", "control_W", (right_xmin + 0.5, -2.0), 0.65, layer),
-            (VREF_SWITCH_INSTANCE_NAME, "vss", "vss_N", (-2.0, 3.0), 1.6, layer),
-            (VSS_SWITCH_INSTANCE_NAME, "vss", "vss_N", (right_xmin + 1.0, 3.0), 1.8, layer),
-            (VREF_SWITCH_INSTANCE_NAME, "vdd", "vdd_S", (-1.0, -3.0), 1.4, layer),
-            (VSS_SWITCH_INSTANCE_NAME, "vdd", "vdd_S", (right_xmin + 1.0, -3.0), 1.6, layer),
+            (
+                VREF_SWITCH_INSTANCE_NAME,
+                "input",
+                "input_W",
+                (-3.5, 1.5),
+                180.0,
+                0.4,
+                signal,
+            ),
+            (
+                VREF_SWITCH_INSTANCE_NAME,
+                "output",
+                "output_E",
+                (-0.5, 1.0),
+                0.0,
+                0.7,
+                signal,
+            ),
+            (
+                VSS_SWITCH_INSTANCE_NAME,
+                "output",
+                "output_E",
+                (right_xmin + 0.5, -1.0),
+                180.0,
+                0.9,
+                second_output_layer or signal,
+            ),
+            (
+                VSS_SWITCH_INSTANCE_NAME,
+                "input",
+                "input_W",
+                (right_xmin + 3.5, -1.5),
+                0.0,
+                0.4,
+                signal,
+            ),
+            (
+                VREF_SWITCH_INSTANCE_NAME,
+                "control",
+                "control_W",
+                (-2.0, -1.0),
+                180.0,
+                0.5,
+                signal,
+            ),
+            (
+                VSS_SWITCH_INSTANCE_NAME,
+                "control_bar",
+                "control_bar_E",
+                (right_xmin + 0.5, select_right_y),
+                180.0,
+                0.6,
+                signal,
+            ),
+            (
+                VREF_SWITCH_INSTANCE_NAME,
+                "control_bar",
+                "control_bar_E",
+                (vref_select_bar_x, -2.0),
+                0.0,
+                0.6,
+                signal,
+            ),
+            (
+                VSS_SWITCH_INSTANCE_NAME,
+                "control",
+                "control_W",
+                (right_xmin + 2.0, 1.0),
+                0.0,
+                0.5,
+                signal,
+            ),
+            (
+                VREF_SWITCH_INSTANCE_NAME,
+                "vss",
+                "vss_N",
+                (-2.0, 3.0),
+                90.0,
+                1.6,
+                signal,
+            ),
+            (
+                VSS_SWITCH_INSTANCE_NAME,
+                "vss",
+                "vss_S",
+                (right_xmin + 2.0, 2.5),
+                90.0,
+                1.8,
+                signal,
+            ),
+            (
+                VREF_SWITCH_INSTANCE_NAME,
+                "vdd",
+                "vdd_E",
+                (-0.5, -0.5),
+                0.0,
+                7.0,
+                lower,
+            ),
+            (
+                VSS_SWITCH_INSTANCE_NAME,
+                "vdd",
+                "vdd_E",
+                (right_xmin + 0.5, 0.5),
+                180.0,
+                8.0,
+                lower,
+            ),
         )
         access_points = {}
-        terminal_access = {}
-        for instance_name, terminal_name, port_name, center, width, port_layer in definitions:
+        terminal_access: dict[TerminalRef, tuple[str, ...]] = {}
+        for (
+            instance_name,
+            terminal_name,
+            port_name,
+            center,
+            orientation,
+            width,
+            layer,
+        ) in definitions:
             terminal = TerminalRef(instance_name, terminal_name)
             access_name = f"{instance_name}__{port_name}"
             access_points[access_name] = AccessPoint(
@@ -118,9 +246,9 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
                 terminal=terminal,
                 primitive_port_name=port_name,
                 center=center,
-                orientation=0.0,
+                orientation=orientation,
                 width=width,
-                layer=port_layer,
+                layer=layer,
             )
             terminal_access[terminal] = (access_name,)
 
@@ -138,10 +266,15 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
             VSS_SWITCH_INSTANCE_NAME: PlacedInstance(
                 instance_name=VSS_SWITCH_INSTANCE_NAME,
                 cell_name="vss_tg",
-                bbox=BoundingBox(right_xmin, -4.0, right_xmin + 3.0, 4.0),
+                bbox=BoundingBox(
+                    right_xmin,
+                    -4.0,
+                    right_xmin + 3.0,
+                    4.0,
+                ),
                 role="active",
                 group="VSS_SWITCH",
-                orientation="R0",
+                orientation="R180",
                 row=0,
                 col=1,
             ),
@@ -154,28 +287,50 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
             obstacles=(),
         )
 
-    def test_runtime_geometry_drives_north_perimeter_and_central_trunk(self):
-        routes = plan_reference_selector_topology(
+    def _plan(self, **snapshot_kwargs):
+        return plan_reference_selector_topology(
             intent=self._intent(),
-            physical_design=self._snapshot(),
+            physical_design=self._snapshot(**snapshot_kwargs),
+            control_transition=self._transition(),
         )
-        self.assertEqual(len(routes.common_plan.segments), 1)
+
+    def test_default_policy_uses_rotationally_symmetric_child_pair(self):
+        policy = self._intent().policy
+        self.assertEqual(policy.vref_child_orientation, "R0")
+        self.assertEqual(policy.vss_child_orientation, "R180")
+        self.assertEqual(policy.control_route_glayer, "met3")
+
+    def test_invalid_child_orientation_fails_at_policy_boundary(self):
+        with self.assertRaises(ValueError):
+            ReferenceSelectorLayoutPolicy(vss_child_orientation="R90")
+
+    def test_empty_control_route_layer_fails_at_policy_boundary(self):
+        with self.assertRaises(ValueError):
+            ReferenceSelectorLayoutPolicy(control_route_glayer="")
+
+    def test_transformed_geometry_drives_balanced_multilayer_topology(self):
+        routes = self._plan()
+
+        self.assertEqual(len(routes.common_plan.segments), 3)
         self.assertEqual(len(routes.select_plan.segments), 5)
-        self.assertEqual(len(routes.select_bar_plan.segments), 3)
+        self.assertEqual(len(routes.select_bar_plan.segments), 5)
         self.assertEqual(len(routes.vss_plan.segments), 5)
-        self.assertEqual(len(routes.vdd_plan.segments), 3)
-        self.assertEqual(routes.common_plan.segments[0].layer, (88, 2))
-        self.assertEqual(routes.common_plan.metrics.resolved_width, 0.7)
-        self.assertEqual(routes.select_plan.metrics.resolved_width, 0.5)
-        self.assertEqual(routes.select_bar_plan.metrics.resolved_width, 0.55)
-        self.assertEqual(routes.vss_plan.metrics.resolved_width, 0.4)
-        self.assertEqual(routes.vdd_plan.metrics.resolved_width, 0.4)
+        self.assertEqual(len(routes.vdd_plan.segments), 4)
 
-        north_horizontal = routes.select_plan.segments[2]
-        self.assertEqual(north_horizontal.start[1], 6.75)
-        self.assertLess(north_horizontal.start[0], -3.0)
-        self.assertGreater(north_horizontal.end[0], 7.0)
-
+        self.assertEqual(
+            routes.common_plan.selected_access_point_names,
+            (
+                f"{VREF_SWITCH_INSTANCE_NAME}__output_E",
+                f"{VSS_SWITCH_INSTANCE_NAME}__output_E",
+            ),
+        )
+        self.assertEqual(
+            routes.select_plan.selected_access_point_names,
+            (
+                f"{VREF_SWITCH_INSTANCE_NAME}__control_W",
+                f"{VSS_SWITCH_INSTANCE_NAME}__control_bar_E",
+            ),
+        )
         self.assertEqual(
             routes.select_bar_plan.selected_access_point_names,
             (
@@ -183,115 +338,144 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
                 f"{VSS_SWITCH_INSTANCE_NAME}__control_W",
             ),
         )
-        central_trunk = routes.select_bar_plan.segments[1]
-        self.assertEqual(central_trunk.orientation, "vertical")
-        self.assertEqual(central_trunk.start, (2.0, -1.0))
-        self.assertEqual(central_trunk.end, (2.0, -2.0))
-        self.assertGreater(
-            central_trunk.start[0]
-            - routes.select_bar_plan.metrics.resolved_width / 2.0,
-            0.0,
+        self.assertEqual(routes.select_plan.metrics.via_count, 2)
+        self.assertEqual(routes.select_bar_plan.metrics.via_count, 2)
+        self.assertEqual(
+            routes.select_plan.metrics.total_length,
+            routes.select_bar_plan.metrics.total_length,
         )
-        self.assertLess(
-            central_trunk.start[0]
-            + routes.select_bar_plan.metrics.resolved_width / 2.0,
-            4.0,
+        self.assertEqual(routes.select_plan.metrics.total_length, 26.8)
+        self.assertEqual(
+            {segment.layer for segment in routes.select_plan.segments},
+            {self.signal_layer, self.control_route_layer},
         )
-        self.assertEqual(routes.select_bar_plan.metrics.bend_count, 2)
-        self.assertEqual(routes.select_bar_plan.metrics.total_length, 6.0)
+        self.assertEqual(
+            routes.select_plan.strategy,
+            "reference_selector_balanced_north_control",
+        )
         self.assertEqual(
             routes.select_bar_plan.strategy,
-            "reference_selector_central_gap_control",
+            "reference_selector_balanced_south_control",
         )
 
         self.assertEqual(
             routes.vss_plan.selected_access_point_names,
             (
                 f"{VREF_SWITCH_INSTANCE_NAME}__vss_N",
-                f"{VSS_SWITCH_INSTANCE_NAME}__vss_N",
-                f"{VSS_SWITCH_INSTANCE_NAME}__input_E",
+                f"{VSS_SWITCH_INSTANCE_NAME}__vss_S",
+                f"{VSS_SWITCH_INSTANCE_NAME}__input_W",
             ),
         )
-        vss_rail = routes.vss_plan.segments[2]
-        self.assertEqual(vss_rail.orientation, "horizontal")
-        self.assertEqual(vss_rail.start, (-2.0, 5.25))
-        self.assertEqual(vss_rail.end, (8.25, 5.25))
+        self.assertEqual(routes.vss_plan.metrics.resolved_width, 0.4)
         self.assertEqual(routes.vss_plan.metrics.via_count, 0)
 
         self.assertEqual(
             routes.vdd_plan.selected_access_point_names,
             (
-                f"{VREF_SWITCH_INSTANCE_NAME}__vdd_S",
-                f"{VSS_SWITCH_INSTANCE_NAME}__vdd_S",
+                f"{VREF_SWITCH_INSTANCE_NAME}__vdd_E",
+                f"{VSS_SWITCH_INSTANCE_NAME}__vdd_E",
             ),
         )
-        vdd_rail = routes.vdd_plan.segments[1]
-        self.assertEqual(vdd_rail.orientation, "horizontal")
-        self.assertEqual(vdd_rail.start, (-1.0, -6.7))
-        self.assertEqual(vdd_rail.end, (5.0, -6.7))
-        self.assertEqual(routes.vdd_plan.metrics.via_count, 0)
-
-    def test_central_trunk_x_is_derived_from_runtime_child_bboxes(self):
-        routes = plan_reference_selector_topology(
-            intent=self._intent(),
-            physical_design=self._snapshot(right_xmin=8.0),
+        self.assertEqual(routes.vdd_plan.segments[0].layer, self.lower_supply_layer)
+        self.assertEqual(routes.vdd_plan.metrics.resolved_width, 0.4)
+        self.assertEqual(
+            routes.vdd_plan.strategy,
+            "reference_selector_central_lower_metal_vdd",
         )
-        central_trunk = routes.select_bar_plan.segments[1]
-        self.assertEqual(central_trunk.start[0], 4.0)
-        self.assertEqual(central_trunk.end[0], 4.0)
+
+    def test_central_geometry_tracks_runtime_child_bboxes(self):
+        routes = self._plan(right_xmin=8.0)
+        common_trunk = routes.common_plan.segments[1]
+        self.assertEqual(common_trunk.start[0], 4.0)
+        self.assertEqual(common_trunk.end[0], 4.0)
+        self.assertEqual(routes.select_plan.vias[1].center[0], 4.0)
+        self.assertEqual(routes.select_bar_plan.vias[0].center[0], 4.0)
 
     def test_explicit_width_is_policy(self):
         routes = plan_reference_selector_topology(
-            intent=self._intent(route_width=1.1),
+            intent=self._intent(route_width=0.8),
             physical_design=self._snapshot(),
+            control_transition=self._transition(),
         )
         self.assertTrue(
-            all(plan.metrics.resolved_width == 1.1 for plan in routes.plans)
+            all(plan.metrics.resolved_width == 0.8 for plan in routes.plans)
         )
 
     def test_explicit_supply_width_does_not_change_signal_routes(self):
         routes = plan_reference_selector_topology(
             intent=self._intent(supply_route_width=0.8),
             physical_design=self._snapshot(),
+            control_transition=self._transition(),
         )
         self.assertEqual(routes.common_plan.metrics.resolved_width, 0.7)
+        self.assertEqual(routes.select_plan.metrics.resolved_width, 0.5)
         self.assertEqual(routes.vss_plan.metrics.resolved_width, 0.8)
         self.assertEqual(routes.vdd_plan.metrics.resolved_width, 0.8)
 
-    def test_vss_lane_must_fit_between_child_and_select_perimeter(self):
+    def test_vss_lane_must_fit_between_child_and_control_channel(self):
         with self.assertRaises(RuntimeError):
             plan_reference_selector_topology(
-                intent=self._intent(route_width=2.5),
+                intent=self._intent(route_width=3.0),
                 physical_design=self._snapshot(),
+                control_transition=self._transition(),
             )
 
-    def test_layer_mismatch_fails_explicitly(self):
+    def test_common_layer_mismatch_fails_explicitly(self):
+        with self.assertRaises(RuntimeError):
+            self._plan(second_output_layer=(100, 0))
+
+    def test_control_transition_source_layer_must_match_accesses(self):
         with self.assertRaises(RuntimeError):
             plan_reference_selector_topology(
                 intent=self._intent(),
-                physical_design=self._snapshot(second_layer=(99, 0)),
+                physical_design=self._snapshot(),
+                control_transition=self._transition(source_layer=(100, 0)),
+            )
+
+    def test_upper_layer_minimum_width_does_not_widen_source_stubs(self):
+        routes = plan_reference_selector_topology(
+            intent=self._intent(),
+            physical_design=self._snapshot(),
+            control_transition=self._transition(minimum_route_width=0.9),
+        )
+        self.assertEqual(routes.select_plan.segments[0].width, 0.5)
+        self.assertEqual(routes.select_plan.segments[-1].width, 0.5)
+        self.assertTrue(
+            all(
+                segment.width == 0.9
+                for segment in routes.select_plan.segments[1:-1]
+            )
+        )
+
+    def test_central_via_envelope_must_clear_common(self):
+        with self.assertRaises(RuntimeError):
+            plan_reference_selector_topology(
+                intent=self._intent(),
+                physical_design=self._snapshot(),
+                control_transition=self._transition(via_size=(0.8, 1.4)),
             )
 
     def test_overlapping_children_fail_explicitly(self):
         with self.assertRaises(RuntimeError):
-            plan_reference_selector_topology(
-                intent=self._intent(),
-                physical_design=self._snapshot(right_xmin=-0.5),
-            )
+            self._plan(right_xmin=-0.5)
 
-    def test_child_gap_must_contain_central_trunk_width(self):
+    def test_child_gap_must_contain_control_via(self):
         with self.assertRaises(RuntimeError):
             plan_reference_selector_topology(
                 intent=self._intent(),
                 physical_design=self._snapshot(right_xmin=0.5),
+                control_transition=self._transition(via_size=(0.8, 0.8)),
             )
 
-    def test_inner_accesses_must_face_central_trunk(self):
+    def test_transformed_control_order_must_support_balanced_topology(self):
         with self.assertRaises(RuntimeError):
-            plan_reference_selector_topology(
-                intent=self._intent(),
-                physical_design=self._snapshot(vref_select_bar_x=2.5),
-            )
+            self._plan(vref_select_bar_x=2.5)
+        with self.assertRaises(RuntimeError):
+            self._plan(select_right_y=-3.0)
+
+    def test_vdd_ties_must_be_on_lower_layer(self):
+        with self.assertRaises(RuntimeError):
+            self._plan(vdd_layer=self.signal_layer)
 
 
 if __name__ == "__main__":

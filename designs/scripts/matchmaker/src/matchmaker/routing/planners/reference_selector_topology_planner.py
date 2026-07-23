@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from math import isclose
 
 from matchmaker.design.reference_selector_naming import (
@@ -10,6 +10,7 @@ from matchmaker.design.reference_selector_naming import (
     VSS_NET_NAME,
     VSS_SWITCH_INSTANCE_NAME,
 )
+from matchmaker.physical.access_selection import unique_access_facing
 from matchmaker.physical.models import AccessPoint, PhysicalDesignSnapshot, TerminalRef
 from matchmaker.placement.cdac.reference_selector_intent import (
     ReferenceSelectorLayoutIntent,
@@ -19,7 +20,12 @@ from matchmaker.routing.plans.route_plan import (
     RouteMetrics,
     RoutePlan,
     RouteSegment,
+    ViaPlan,
 )
+from matchmaker.routing.plans.route_plan_checks import (
+    require_no_cross_net_route_overlaps,
+)
+from matchmaker.routing.resources import RoutingLayerTransition
 
 
 @dataclass(frozen=True)
@@ -41,25 +47,19 @@ class ReferenceSelectorRouteBundle:
         )
 
 
-def _access(
+def _access_facing(
     snapshot: PhysicalDesignSnapshot,
     *,
     instance_name: str,
     terminal_name: str,
-    child_port_name: str,
+    orientation: int,
 ) -> AccessPoint:
-    terminal = TerminalRef(instance_name, terminal_name)
-    matches = tuple(
-        access
-        for access in snapshot.access_points_for(terminal)
-        if access.primitive_port_name == child_port_name
+    return unique_access_facing(
+        snapshot,
+        terminal=TerminalRef(instance_name, terminal_name),
+        orientation=orientation,
+        context="selector topology access",
     )
-    if len(matches) != 1:
-        raise RuntimeError(
-            f"expected one {instance_name}.{terminal_name} access named "
-            f"{child_port_name!r}; found {len(matches)}"
-        )
-    return matches[0]
 
 
 def _resolved_width(
@@ -94,14 +94,28 @@ def _segments_from_points(
     layer,
     width: float,
 ) -> tuple[RouteSegment, ...]:
-    segments: list[RouteSegment] = []
-    for start, end in zip(points, points[1:]):
-        if start == end:
-            continue
-        segments.append(RouteSegment(start=start, end=end, layer=layer, width=width))
+    segments = tuple(
+        RouteSegment(start=start, end=end, layer=layer, width=width)
+        for start, end in zip(points, points[1:])
+        if start != end
+    )
     if not segments:
         raise RuntimeError("reference-selector route collapsed to zero length")
-    return tuple(segments)
+    return segments
+
+
+def _metrics(
+    *,
+    segments: tuple[RouteSegment, ...],
+    vias: tuple[ViaPlan, ...],
+    width: float,
+) -> RouteMetrics:
+    return RouteMetrics.from_geometry(
+        segments=segments,
+        vias=vias,
+        estimated_cost=sum(segment.length for segment in segments),
+        resolved_width=width,
+    )
 
 
 def _route_plan(
@@ -113,20 +127,18 @@ def _route_plan(
     intent: ReferenceSelectorLayoutIntent,
     strategy: str,
     detail: str,
+    extra_checks: tuple[ConstraintCheck, ...] = (),
 ) -> RoutePlan:
-    same_layer = first.layer == second.layer
-    if not same_layer:
+    if first.layer != second.layer:
         raise RuntimeError(
             f"selector net {net_name} endpoints use different layers: "
             f"{first.layer!r} vs {second.layer!r}"
         )
     width = _resolved_width(intent=intent, first=first, second=second)
-    segments = _segments_from_points(points=points, layer=first.layer, width=width)
-    metrics = RouteMetrics.from_geometry(
-        segments=segments,
-        vias=(),
-        estimated_cost=sum(segment.length for segment in segments),
-        resolved_width=width,
+    segments = _segments_from_points(
+        points=points,
+        layer=first.layer,
+        width=width,
     )
     return RoutePlan(
         net_name=net_name,
@@ -135,19 +147,110 @@ def _route_plan(
         strategy=strategy,
         segments=segments,
         vias=(),
-        metrics=metrics,
+        metrics=_metrics(segments=segments, vias=(), width=width),
         constraint_checks=(
             ConstraintCheck(
                 name="common_layer",
-                passed=same_layer,
+                passed=True,
                 hard=True,
                 detail=f"resolved layer {first.layer!r}",
             ),
+            *extra_checks,
         ),
         provenance=(
             "typed ReferenceSelectorLayoutIntent",
             "stable generated transmission-gate child bindings",
-            "runtime child-cell access coordinates, widths, layers, and bboxes",
+            "transformed runtime access orientations, layers, widths, and bboxes",
+            detail,
+        ),
+    )
+
+
+def _transition_route_plan(
+    *,
+    net_name: str,
+    first: AccessPoint,
+    second: AccessPoint,
+    first_via_center: tuple[float, float],
+    route_points: tuple[tuple[float, float], ...],
+    second_via_center: tuple[float, float],
+    transition: RoutingLayerTransition,
+    intent: ReferenceSelectorLayoutIntent,
+    strategy: str,
+    detail: str,
+    extra_checks: tuple[ConstraintCheck, ...] = (),
+) -> RoutePlan:
+    if first.layer != second.layer or first.layer != transition.source_layer:
+        raise RuntimeError(
+            f"selector net {net_name} control accesses do not match the "
+            f"transition source layer {transition.source_layer!r}"
+        )
+    if route_points[0] != first_via_center or route_points[-1] != second_via_center:
+        raise RuntimeError("control route points must begin and end at via centers")
+
+    source_width = _resolved_width(intent=intent, first=first, second=second)
+    route_width = max(
+        source_width,
+        transition.minimum_route_width,
+    )
+    source_segments = (
+        RouteSegment(
+            start=first.center,
+            end=first_via_center,
+            layer=transition.source_layer,
+            width=source_width,
+        ),
+        RouteSegment(
+            start=second_via_center,
+            end=second.center,
+            layer=transition.source_layer,
+            width=source_width,
+        ),
+    )
+    route_segments = _segments_from_points(
+        points=route_points,
+        layer=transition.route_layer,
+        width=route_width,
+    )
+    segments = (source_segments[0], *route_segments, source_segments[1])
+    vias = (
+        ViaPlan(
+            center=first_via_center,
+            lower_layer=transition.source_layer,
+            upper_layer=transition.route_layer,
+            via_name=transition.via_name,
+        ),
+        ViaPlan(
+            center=second_via_center,
+            lower_layer=transition.source_layer,
+            upper_layer=transition.route_layer,
+            via_name=transition.via_name,
+        ),
+    )
+    return RoutePlan(
+        net_name=net_name,
+        terminals=(first.terminal, second.terminal),
+        selected_access_point_names=(first.name, second.name),
+        strategy=strategy,
+        segments=segments,
+        vias=vias,
+        metrics=_metrics(segments=segments, vias=vias, width=route_width),
+        constraint_checks=(
+            ConstraintCheck(
+                name="layer_transition",
+                passed=True,
+                hard=True,
+                detail=(
+                    f"{transition.source_layer!r} -> "
+                    f"{transition.route_layer!r} with {transition.via_name}"
+                ),
+            ),
+            *extra_checks,
+        ),
+        provenance=(
+            "typed ReferenceSelectorLayoutIntent",
+            "typed RoutingLayerTransition",
+            "transformed runtime access orientations, layers, widths, and bboxes",
             detail,
         ),
     )
@@ -181,9 +284,7 @@ def _route_tree_plan(
         raise RuntimeError(f"selector net {net_name} collapsed to zero length")
 
     segment_points = {
-        point
-        for segment in segments
-        for point in (segment.start, segment.end)
+        point for segment in segments for point in (segment.start, segment.end)
     }
     missing_accesses = tuple(
         access.name for access in accesses if access.center not in segment_points
@@ -194,12 +295,6 @@ def _route_tree_plan(
             + ", ".join(missing_accesses)
         )
 
-    metrics = RouteMetrics.from_geometry(
-        segments=segments,
-        vias=(),
-        estimated_cost=sum(segment.length for segment in segments),
-        resolved_width=width,
-    )
     return RoutePlan(
         net_name=net_name,
         terminals=tuple(access.terminal for access in accesses),
@@ -207,7 +302,7 @@ def _route_tree_plan(
         strategy=strategy,
         segments=segments,
         vias=(),
-        metrics=metrics,
+        metrics=_metrics(segments=segments, vias=(), width=width),
         constraint_checks=(
             ConstraintCheck(
                 name="common_layer",
@@ -220,42 +315,28 @@ def _route_tree_plan(
         provenance=(
             "typed ReferenceSelectorLayoutIntent",
             "stable generated transmission-gate child bindings",
-            "runtime child-cell access coordinates, widths, layers, and bboxes",
+            "transformed runtime access orientations, layers, widths, and bboxes",
             detail,
         ),
     )
 
 
-def _perimeter_points(
-    *,
-    first: AccessPoint,
-    second: AccessPoint,
-    left_channel: float,
-    right_channel: float,
-    horizontal_channel: float,
-) -> tuple[tuple[float, float], ...]:
-    return (
-        first.center,
-        (left_channel, first.center[1]),
-        (left_channel, horizontal_channel),
-        (right_channel, horizontal_channel),
-        (right_channel, second.center[1]),
-        second.center,
-    )
+def _with_check(plan: RoutePlan, check: ConstraintCheck) -> RoutePlan:
+    return replace(plan, constraint_checks=(*plan.constraint_checks, check))
 
 
 def plan_reference_selector_topology(
     *,
     intent: ReferenceSelectorLayoutIntent,
     physical_design: PhysicalDesignSnapshot,
+    control_transition: RoutingLayerTransition,
 ) -> ReferenceSelectorRouteBundle:
-    """Plan selector signal, control, body, and supply topology.
+    """Plan a balanced R0/R180 selector with explicit layer resources.
 
-    SELECT uses the proven outward-facing north-perimeter path. SELECT_BAR uses
-    the proven inner-facing child accesses and one vertical trunk centered in the
-    gap between child transmission-gate envelopes. VSS uses the measured met2
-    north body ties plus the VSS-switch input; VDD uses the measured met2 south
-    body ties. Both supply routes remain via-free.
+    COMMON and VSS stay on the measured signal layer. Complementary controls
+    escape through identical via stacks to a higher routing layer and use
+    rotationally symmetric half-perimeter paths. VDD uses the facing conductive
+    east/west PMOS body ties on their measured lower metal layer.
     """
 
     vref_instance = physical_design.instance(VREF_SWITCH_INSTANCE_NAME)
@@ -263,149 +344,235 @@ def plan_reference_selector_topology(
     if vref_instance.bbox.xmax > vss_instance.bbox.xmin:
         raise RuntimeError("reference-selector child bboxes overlap or are reversed")
 
-    vref_output = _access(
+    child_gap = vss_instance.bbox.xmin - vref_instance.bbox.xmax
+    central_x = (vref_instance.bbox.xmax + vss_instance.bbox.xmin) / 2.0
+    child_top = max(vref_instance.bbox.ymax, vss_instance.bbox.ymax)
+    child_bottom = min(vref_instance.bbox.ymin, vss_instance.bbox.ymin)
+
+    vref_output = _access_facing(
         physical_design,
         instance_name=VREF_SWITCH_INSTANCE_NAME,
         terminal_name="output",
-        child_port_name="output_E",
+        orientation=0,
     )
-    vss_output = _access(
+    vss_output = _access_facing(
         physical_design,
         instance_name=VSS_SWITCH_INSTANCE_NAME,
         terminal_name="output",
-        child_port_name="output_W",
+        orientation=180,
     )
-    aligned = isclose(
-        vref_output.center[1],
-        vss_output.center[1],
-        abs_tol=intent.policy.alignment_tolerance,
+    common_faces_gap = (
+        vref_output.center[0] < central_x < vss_output.center[0]
     )
-    if not aligned:
-        raise RuntimeError(
-            "reference-selector common output accesses are not horizontally aligned: "
-            f"{vref_output.center!r} vs {vss_output.center!r}"
-        )
+    if not common_faces_gap:
+        raise RuntimeError("reference-selector COMMON accesses do not face the gap")
     common_plan = _route_plan(
         net_name=COMMON_NET_NAME,
         first=vref_output,
         second=vss_output,
-        points=(vref_output.center, vss_output.center),
-        intent=intent,
-        strategy="reference_selector_direct_common",
-        detail="direct inner-output connection",
-    )
-
-    vref_select = _access(
-        physical_design,
-        instance_name=VREF_SWITCH_INSTANCE_NAME,
-        terminal_name="control",
-        child_port_name="control_W",
-    )
-    vss_select = _access(
-        physical_design,
-        instance_name=VSS_SWITCH_INSTANCE_NAME,
-        terminal_name="control_bar",
-        child_port_name="control_bar_E",
-    )
-    select_width = _resolved_width(
-        intent=intent,
-        first=vref_select,
-        second=vss_select,
-    )
-    select_offset = intent.policy.channel_clearance + select_width / 2.0
-    select_left = vref_instance.bbox.xmin - select_offset
-    select_right = vss_instance.bbox.xmax + select_offset
-    top_channel = (
-        max(vref_instance.bbox.ymax, vss_instance.bbox.ymax) + select_offset
-    )
-    select_plan = _route_plan(
-        net_name=SELECT_NET_NAME,
-        first=vref_select,
-        second=vss_select,
-        points=_perimeter_points(
-            first=vref_select,
-            second=vss_select,
-            left_channel=select_left,
-            right_channel=select_right,
-            horizontal_channel=top_channel,
+        points=(
+            vref_output.center,
+            (central_x, vref_output.center[1]),
+            (central_x, vss_output.center[1]),
+            vss_output.center,
         ),
         intent=intent,
-        strategy="reference_selector_north_perimeter_control",
-        detail=(
-            f"north perimeter channel y={top_channel}, "
-            f"x={select_left}..{select_right}"
+        strategy="reference_selector_central_common",
+        detail=f"single central-gap trunk x={central_x}",
+        extra_checks=(
+            ConstraintCheck(
+                name="gap_facing_accesses",
+                passed=common_faces_gap,
+                hard=True,
+                detail="east VREF output and west VSS output face the child gap",
+            ),
         ),
     )
 
-    vref_select_bar = _access(
+    select_left = _access_facing(
+        physical_design,
+        instance_name=VREF_SWITCH_INSTANCE_NAME,
+        terminal_name="control",
+        orientation=180,
+    )
+    select_right = _access_facing(
+        physical_design,
+        instance_name=VSS_SWITCH_INSTANCE_NAME,
+        terminal_name="control_bar",
+        orientation=180,
+    )
+    select_bar_left = _access_facing(
         physical_design,
         instance_name=VREF_SWITCH_INSTANCE_NAME,
         terminal_name="control_bar",
-        child_port_name="control_bar_E",
+        orientation=0,
     )
-    vss_select_bar = _access(
+    select_bar_right = _access_facing(
         physical_design,
         instance_name=VSS_SWITCH_INSTANCE_NAME,
         terminal_name="control",
-        child_port_name="control_W",
+        orientation=0,
     )
-    select_bar_width = _resolved_width(
-        intent=intent,
-        first=vref_select_bar,
-        second=vss_select_bar,
+
+    control_accesses = (
+        select_left,
+        select_right,
+        select_bar_left,
+        select_bar_right,
     )
-    child_gap = vss_instance.bbox.xmin - vref_instance.bbox.xmax
-    if child_gap <= select_bar_width:
-        raise RuntimeError(
-            "reference-selector child gap cannot contain the SELECT_BAR trunk: "
-            f"gap={child_gap}, route_width={select_bar_width}"
-        )
-    central_x = (vref_instance.bbox.xmax + vss_instance.bbox.xmin) / 2.0
-    if not (
-        vref_select_bar.center[0]
-        < central_x
-        < vss_select_bar.center[0]
+    if any(
+        access.layer != control_transition.source_layer
+        for access in control_accesses
     ):
         raise RuntimeError(
-            "reference-selector SELECT_BAR accesses do not face the central gap: "
-            f"left={vref_select_bar.center!r}, central_x={central_x}, "
-            f"right={vss_select_bar.center!r}"
+            "selector control accesses do not share the transition layer"
         )
-    select_bar_plan = _route_plan(
-        net_name=SELECT_BAR_NET_NAME,
-        first=vref_select_bar,
-        second=vss_select_bar,
-        points=(
-            vref_select_bar.center,
-            (central_x, vref_select_bar.center[1]),
-            (central_x, vss_select_bar.center[1]),
-            vss_select_bar.center,
+
+    control_width = max(
+        _resolved_width(
+            intent=intent,
+            first=select_left,
+            second=select_right,
         ),
-        intent=intent,
-        strategy="reference_selector_central_gap_control",
+        _resolved_width(
+            intent=intent,
+            first=select_bar_left,
+            second=select_bar_right,
+        ),
+        control_transition.minimum_route_width,
+    )
+    via_width, via_height = control_transition.via_size
+    if child_gap <= via_width:
+        raise RuntimeError(
+            "reference-selector child gap cannot contain the control via: "
+            f"gap={child_gap}, via_width={via_width}"
+        )
+
+    outer_offset = (
+        intent.policy.channel_clearance + max(control_width, via_width) / 2.0
+    )
+    left_control_x = vref_instance.bbox.xmin - outer_offset
+    right_control_x = vss_instance.bbox.xmax + outer_offset
+    top_control_y = (
+        child_top + intent.policy.channel_clearance + control_width / 2.0
+    )
+    bottom_control_y = (
+        child_bottom - intent.policy.channel_clearance - control_width / 2.0
+    )
+
+    transformed_order_is_safe = (
+        select_bar_left.center[1] < select_right.center[1]
+        and select_left.center[0] > left_control_x
+        and select_right.center[0] > central_x
+        and select_bar_left.center[0] < central_x
+        and select_bar_right.center[0] < right_control_x
+    )
+    if not transformed_order_is_safe:
+        raise RuntimeError(
+            "reference-selector transformed control accesses do not support "
+            "the balanced half-perimeter topology"
+        )
+
+    common_ymin = min(vref_output.center[1], vss_output.center[1])
+    common_ymax = max(vref_output.center[1], vss_output.center[1])
+    common_half_width = common_plan.metrics.resolved_width / 2.0
+    central_vias_clear_common = (
+        select_right.center[1] - via_height / 2.0
+        > common_ymax + common_half_width
+        and select_bar_left.center[1] + via_height / 2.0
+        < common_ymin - common_half_width
+    )
+    if not central_vias_clear_common:
+        raise RuntimeError(
+            "reference-selector central control vias do not clear COMMON"
+        )
+    central_via_check = ConstraintCheck(
+        name="central_vias_clear_common",
+        passed=True,
+        hard=True,
         detail=(
-            f"single central-gap trunk x={central_x}, "
-            f"child gap={child_gap}"
+            f"via height {via_height}, COMMON y-range "
+            f"{common_ymin}..{common_ymax}"
         ),
     )
 
-    vref_vss = _access(
+    select_plan = _transition_route_plan(
+        net_name=SELECT_NET_NAME,
+        first=select_left,
+        second=select_right,
+        first_via_center=(left_control_x, select_left.center[1]),
+        route_points=(
+            (left_control_x, select_left.center[1]),
+            (left_control_x, top_control_y),
+            (central_x, top_control_y),
+            (central_x, select_right.center[1]),
+        ),
+        second_via_center=(central_x, select_right.center[1]),
+        transition=control_transition,
+        intent=intent,
+        strategy="reference_selector_balanced_north_control",
+        detail="west outer escape, north half-perimeter, central-gap landing",
+        extra_checks=(central_via_check,),
+    )
+    select_bar_plan = _transition_route_plan(
+        net_name=SELECT_BAR_NET_NAME,
+        first=select_bar_left,
+        second=select_bar_right,
+        first_via_center=(central_x, select_bar_left.center[1]),
+        route_points=(
+            (central_x, select_bar_left.center[1]),
+            (central_x, bottom_control_y),
+            (right_control_x, bottom_control_y),
+            (right_control_x, select_bar_right.center[1]),
+        ),
+        second_via_center=(right_control_x, select_bar_right.center[1]),
+        transition=control_transition,
+        intent=intent,
+        strategy="reference_selector_balanced_south_control",
+        detail="central-gap landing, south half-perimeter, east outer escape",
+        extra_checks=(central_via_check,),
+    )
+
+    controls_length_matched = isclose(
+        select_plan.metrics.total_length,
+        select_bar_plan.metrics.total_length,
+        abs_tol=intent.policy.alignment_tolerance,
+    )
+    if not controls_length_matched:
+        raise RuntimeError(
+            "balanced selector controls are not length matched: "
+            f"SELECT={select_plan.metrics.total_length}, "
+            f"SELECT_BAR={select_bar_plan.metrics.total_length}"
+        )
+    length_check = ConstraintCheck(
+        name="control_length_match",
+        passed=controls_length_matched,
+        hard=True,
+        detail=(
+            f"SELECT={select_plan.metrics.total_length}, "
+            f"SELECT_BAR={select_bar_plan.metrics.total_length}"
+        ),
+    )
+    select_plan = _with_check(select_plan, length_check)
+    select_bar_plan = _with_check(select_bar_plan, length_check)
+
+    vref_vss = _access_facing(
         physical_design,
         instance_name=VREF_SWITCH_INSTANCE_NAME,
         terminal_name="vss",
-        child_port_name="vss_N",
+        orientation=90,
     )
-    vss_vss = _access(
+    vss_vss = _access_facing(
         physical_design,
         instance_name=VSS_SWITCH_INSTANCE_NAME,
         terminal_name="vss",
-        child_port_name="vss_N",
+        orientation=90,
     )
-    vss_signal = _access(
+    vss_signal = _access_facing(
         physical_design,
         instance_name=VSS_SWITCH_INSTANCE_NAME,
         terminal_name="input",
-        child_port_name="input_E",
+        orientation=0,
     )
     vss_accesses = (vref_vss, vss_vss, vss_signal)
     vss_width = _resolved_supply_width(
@@ -414,147 +581,119 @@ def plan_reference_selector_topology(
         signal_anchor=vss_signal,
     )
 
-    child_top = max(vref_instance.bbox.ymax, vss_instance.bbox.ymax)
-    top_opening = top_channel - select_width / 2.0 - child_top
-    right_opening = (
-        select_right - select_width / 2.0 - vss_instance.bbox.xmax
+    top_opening = top_control_y - control_width / 2.0 - child_top
+    right_via_edge = right_control_x + via_width / 2.0
+    vss_service_x = max(
+        vss_signal.center[0],
+        right_via_edge + intent.policy.channel_clearance + vss_width / 2.0,
     )
-    supply_lane_fits = (
-        top_opening > vss_width and right_opening > vss_width
-    )
-    if not supply_lane_fits:
-        raise RuntimeError(
-            "reference-selector SELECT channel cannot contain the VSS escape: "
-            f"top_opening={top_opening}, right_opening={right_opening}, "
-            f"route_width={vss_width}"
-        )
     vss_rail_y = child_top + top_opening / 2.0
-    vss_service_x = vss_instance.bbox.xmax + right_opening / 2.0
+    supply_lane_fits = top_opening > vss_width
     outward_vss_accesses = (
         vref_vss.center[1] < vss_rail_y
         and vss_vss.center[1] < vss_rail_y
-        and vss_signal.center[0] < vss_service_x
+        and vss_signal.center[0] <= vss_service_x
         and vref_vss.center[0] < vss_vss.center[0] < vss_service_x
     )
-    if not outward_vss_accesses:
+    if not supply_lane_fits or not outward_vss_accesses:
         raise RuntimeError(
-            "reference-selector VSS accesses do not face the north/right "
+            "reference-selector VSS accesses do not fit the north/right "
             "supply channels"
         )
     vss_plan = _route_tree_plan(
         net_name=VSS_NET_NAME,
         accesses=vss_accesses,
         segment_endpoints=(
-            (
-                vref_vss.center,
-                (vref_vss.center[0], vss_rail_y),
-            ),
-            (
-                vss_vss.center,
-                (vss_vss.center[0], vss_rail_y),
-            ),
-            (
-                (vref_vss.center[0], vss_rail_y),
-                (vss_service_x, vss_rail_y),
-            ),
-            (
-                vss_signal.center,
-                (vss_service_x, vss_signal.center[1]),
-            ),
-            (
-                (vss_service_x, vss_signal.center[1]),
-                (vss_service_x, vss_rail_y),
-            ),
+            (vref_vss.center, (vref_vss.center[0], vss_rail_y)),
+            (vss_vss.center, (vss_vss.center[0], vss_rail_y)),
+            ((vref_vss.center[0], vss_rail_y), (vss_service_x, vss_rail_y)),
+            (vss_signal.center, (vss_service_x, vss_signal.center[1])),
+            ((vss_service_x, vss_signal.center[1]), (vss_service_x, vss_rail_y)),
         ),
         width=vss_width,
         strategy="reference_selector_north_vss_rail",
         detail=(
-            f"north rail y={vss_rail_y}, right service channel "
-            f"x={vss_service_x}"
+            f"north rail y={vss_rail_y}, service channel x={vss_service_x} "
+            "outside the east control via"
         ),
         extra_checks=(
             ConstraintCheck(
                 name="supply_lane_clearance",
                 passed=supply_lane_fits,
                 hard=True,
-                detail=(
-                    f"top opening {top_opening}, right opening {right_opening}"
-                ),
+                detail=f"top opening {top_opening}, route width {vss_width}",
             ),
             ConstraintCheck(
                 name="outward_supply_accesses",
                 passed=outward_vss_accesses,
                 hard=True,
-                detail="north bulk ties and east VSS input face their channels",
+                detail="north body ties and physical-east VSS input face channels",
             ),
         ),
     )
 
-    vref_vdd = _access(
+    vref_vdd = _access_facing(
         physical_design,
         instance_name=VREF_SWITCH_INSTANCE_NAME,
         terminal_name="vdd",
-        child_port_name="vdd_S",
+        orientation=0,
     )
-    vss_vdd = _access(
+    vss_vdd = _access_facing(
         physical_design,
         instance_name=VSS_SWITCH_INSTANCE_NAME,
         terminal_name="vdd",
-        child_port_name="vdd_S",
+        orientation=180,
     )
     vdd_accesses = (vref_vdd, vss_vdd)
+    if vref_vdd.layer == common_plan.segments[0].layer:
+        raise RuntimeError(
+            "reference-selector facing VDD ties must use a layer below the "
+            "signal/control accesses"
+        )
     vdd_width = _resolved_supply_width(
         intent=intent,
         accesses=vdd_accesses,
         signal_anchor=vss_signal,
     )
-    child_bottom = min(vref_instance.bbox.ymin, vss_instance.bbox.ymin)
-    vdd_rail_y = (
-        child_bottom - intent.policy.channel_clearance - vdd_width / 2.0
-    )
     outward_vdd_accesses = (
-        vref_vdd.center[1] > vdd_rail_y
-        and vss_vdd.center[1] > vdd_rail_y
-        and vref_vdd.center[0] < vss_vdd.center[0]
+        vref_vdd.center[0] < central_x < vss_vdd.center[0]
     )
     if not outward_vdd_accesses:
-        raise RuntimeError(
-            "reference-selector VDD accesses do not face the south supply channel"
-        )
+        raise RuntimeError("reference-selector VDD accesses do not face the gap")
+    vdd_low_y = min(vref_vdd.center[1], vss_vdd.center[1])
     vdd_plan = _route_tree_plan(
         net_name=VDD_NET_NAME,
         accesses=vdd_accesses,
         segment_endpoints=(
+            (vref_vdd.center, (central_x, vref_vdd.center[1])),
+            (vss_vdd.center, (central_x, vss_vdd.center[1])),
             (
-                vref_vdd.center,
-                (vref_vdd.center[0], vdd_rail_y),
+                (central_x, vref_vdd.center[1]),
+                (central_x, vss_vdd.center[1]),
             ),
-            (
-                (vref_vdd.center[0], vdd_rail_y),
-                (vss_vdd.center[0], vdd_rail_y),
-            ),
-            (
-                vss_vdd.center,
-                (vss_vdd.center[0], vdd_rail_y),
-            ),
+            ((central_x, vdd_low_y), (central_x, bottom_control_y)),
         ),
         width=vdd_width,
-        strategy="reference_selector_south_vdd_rail",
-        detail=f"south rail y={vdd_rail_y}",
+        strategy="reference_selector_central_lower_metal_vdd",
+        detail=(
+            "facing east/west PMOS ties join in the child gap and escape south"
+        ),
         extra_checks=(
             ConstraintCheck(
                 name="outward_supply_accesses",
                 passed=outward_vdd_accesses,
                 hard=True,
-                detail="south bulk ties face the VDD rail",
+                detail="physical east/west PMOS ties face the child gap",
             ),
         ),
     )
 
-    return ReferenceSelectorRouteBundle(
+    bundle = ReferenceSelectorRouteBundle(
         common_plan=common_plan,
         select_plan=select_plan,
         select_bar_plan=select_bar_plan,
         vss_plan=vss_plan,
         vdd_plan=vdd_plan,
     )
+    require_no_cross_net_route_overlaps(bundle.plans)
+    return bundle

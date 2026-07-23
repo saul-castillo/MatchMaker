@@ -158,6 +158,19 @@ class RoutePlan:
             raise ValueError("route metrics do not match segment total length")
         if len(vias) != self.metrics.via_count:
             raise ValueError("route metrics do not match via count")
+        for via in vias:
+            for layer in (via.lower_layer, via.upper_layer):
+                layer_endpoints = {
+                    point
+                    for segment in segments
+                    if segment.layer == layer
+                    for point in (segment.start, segment.end)
+                }
+                if via.center not in layer_endpoints:
+                    raise ValueError(
+                        f"via {via.via_name!r} at {via.center!r} is not a "
+                        f"segment endpoint on layer {layer!r}"
+                    )
 
         object.__setattr__(self, "terminals", terminals)
         object.__setattr__(self, "selected_access_point_names", access_names)

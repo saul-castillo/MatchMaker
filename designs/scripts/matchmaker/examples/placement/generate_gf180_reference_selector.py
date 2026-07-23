@@ -34,7 +34,7 @@ def main() -> int:
         description=(
             "Generate the B0 VREF/VSS selector from typed intent, run Magic "
             "DRC/extraction, and require five shared signal/control/supply nets "
-            "between its two transmission-gate children."
+            "between its balanced R0/R180 transmission-gate children."
         )
     )
     parser.add_argument(
@@ -72,6 +72,13 @@ def main() -> int:
         f"({float(xmin)}, {float(ymin)}) to ({float(xmax)}, {float(ymax)})"
     )
     print(f"physical child instances: {len(generated.physical_design.instances)}")
+    print(
+        "child orientations: "
+        + ", ".join(
+            f"{name}={instance.orientation}"
+            for name, instance in generated.physical_design.instances.items()
+        )
+    )
     print(f"physical access points: {len(generated.physical_design.access_points)}")
     print(f"routing obstacles: {len(generated.physical_design.obstacles)}")
     print("public ports: " + ", ".join(generated.public_port_names))
@@ -90,8 +97,19 @@ def main() -> int:
         )
         print(f"route {plan.net_name} length: {plan.metrics.total_length}")
         print(f"route {plan.net_name} bends: {plan.metrics.bend_count}")
+        print(f"route {plan.net_name} vias: {plan.metrics.via_count}")
         print(f"route {plan.net_name} width: {plan.metrics.resolved_width}")
-        print(f"route {plan.net_name} layer: {plan.segments[0].layer}")
+        print(
+            f"route {plan.net_name} layers: "
+            + ", ".join(
+                map(str, dict.fromkeys(segment.layer for segment in plan.segments))
+            )
+        )
+        if plan.vias:
+            print(
+                f"route {plan.net_name} via centers: "
+                + ", ".join(str(via.center) for via in plan.vias)
+            )
 
     print(f"GDS: {paths.final_gds}")
     if args.skip_verification:

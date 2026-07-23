@@ -12,6 +12,7 @@ from matchmaker.placement.core.placement_result import (
     PlacedReferenceBinding,
     PlacementResult,
 )
+from matchmaker.placement.core.reference_orientation import orient_reference
 from matchmaker.placement.core.tile_plan import PlacementPlan, Tile
 
 
@@ -20,8 +21,8 @@ def _bbox_edges(component) -> tuple[float, float, float, float]:
     return float(xmin), float(ymin), float(xmax), float(ymax)
 
 
-def _center_y(reference, component) -> None:
-    _, ymin, _, ymax = _bbox_edges(component)
+def _center_y(reference) -> None:
+    _, ymin, _, ymax = _bbox_edges(reference)
     reference.movey(-((ymin + ymax) / 2.0))
 
 
@@ -33,20 +34,22 @@ def build_reference_selector_child_placement(
 ) -> PlacementResult:
     """Place two generated transmission gates from runtime envelopes.
 
-    The VREF switch is left of the VSS switch. Their y centers are aligned so
-    the inner output accesses can form a direct common node. Horizontal spacing
-    comes only from child bboxes and the typed selector policy.
+    The VREF switch is left of the VSS switch. Child orientations come from the
+    typed selector policy, and transformed runtime envelopes drive centering and
+    horizontal spacing.
     """
 
     top = Component(name=intent.resolved_cell_name)
     vref_reference = top << vref_switch.component
     vss_reference = top << vss_switch.component
 
-    _center_y(vref_reference, vref_switch.component)
-    _center_y(vss_reference, vss_switch.component)
+    orient_reference(vref_reference, intent.policy.vref_child_orientation)
+    orient_reference(vss_reference, intent.policy.vss_child_orientation)
+    _center_y(vref_reference)
+    _center_y(vss_reference)
 
-    _, _, vref_xmax, _ = _bbox_edges(vref_switch.component)
-    vss_xmin, _, _, _ = _bbox_edges(vss_switch.component)
+    _, _, vref_xmax, _ = _bbox_edges(vref_reference)
+    vss_xmin, _, _, _ = _bbox_edges(vss_reference)
     half_gap = intent.policy.child_gap / 2.0
     vref_reference.movex(-half_gap - vref_xmax)
     vss_reference.movex(half_gap - vss_xmin)
@@ -61,7 +64,7 @@ def build_reference_selector_child_placement(
                 group="VREF_SWITCH",
                 row=0,
                 col=0,
-                orientation="R0",
+                orientation=intent.policy.vref_child_orientation,
                 role="active",
             ),
             Tile(
@@ -69,7 +72,7 @@ def build_reference_selector_child_placement(
                 group="VSS_SWITCH",
                 row=0,
                 col=1,
-                orientation="R0",
+                orientation=intent.policy.vss_child_orientation,
                 role="active",
             ),
         ),
@@ -81,7 +84,7 @@ def build_reference_selector_child_placement(
             reference=vref_reference,
             row=0,
             col=0,
-            orientation="R0",
+            orientation=intent.policy.vref_child_orientation,
             role="active",
             group="VREF_SWITCH",
         ),
@@ -91,7 +94,7 @@ def build_reference_selector_child_placement(
             reference=vss_reference,
             row=0,
             col=1,
-            orientation="R0",
+            orientation=intent.policy.vss_child_orientation,
             role="active",
             group="VSS_SWITCH",
         ),

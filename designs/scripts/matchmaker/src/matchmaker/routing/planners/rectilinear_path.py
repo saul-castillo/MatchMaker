@@ -1,6 +1,7 @@
 from math import isclose
 from typing import Iterable
 
+from matchmaker.physical.access_selection import normalized_cardinal_orientation
 from matchmaker.physical.models import AccessPoint, RoutingObstacle
 from matchmaker.routing.planners.route_candidate import Point, RoutePlanningError
 
@@ -14,12 +15,13 @@ _CARDINAL_VECTOR = {
 
 
 def normalized_access_orientation(access: AccessPoint) -> int:
-    orientation = int(round(float(access.orientation))) % 360
-    if orientation not in _CARDINAL_VECTOR:
-        raise RoutePlanningError(
-            f"Physical access {access.name!r} is not Manhattan: {access.orientation}"
+    try:
+        return normalized_cardinal_orientation(
+            access.orientation,
+            context=f"Physical access {access.name!r}",
         )
-    return orientation
+    except ValueError as error:
+        raise RoutePlanningError(str(error)) from error
 
 
 def movement_direction(start: Point, end: Point) -> tuple[int, int]:
