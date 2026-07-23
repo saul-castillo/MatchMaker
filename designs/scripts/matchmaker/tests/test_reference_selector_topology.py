@@ -64,15 +64,21 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
             ),
         )
 
-    def _snapshot(self, *, second_layer=None, right_xmin=4.0):
+    def _snapshot(
+        self,
+        *,
+        second_layer=None,
+        right_xmin=4.0,
+        vref_select_bar_x=-0.5,
+    ):
         layer = (88, 2)
         definitions = (
             (VREF_SWITCH_INSTANCE_NAME, "output", "output_E", (0.0, 0.0), 0.7, layer),
             (VSS_SWITCH_INSTANCE_NAME, "output", "output_W", (right_xmin, 0.0), 0.9, second_layer or layer),
             (VREF_SWITCH_INSTANCE_NAME, "control", "control_W", (-2.0, 1.0), 0.5, layer),
             (VSS_SWITCH_INSTANCE_NAME, "control_bar", "control_bar_E", (right_xmin + 2.0, -2.0), 0.6, layer),
-            (VREF_SWITCH_INSTANCE_NAME, "control_bar", "control_bar_W", (-2.0, -1.0), 0.55, layer),
-            (VSS_SWITCH_INSTANCE_NAME, "control", "control_E", (right_xmin + 2.0, -2.0), 0.65, layer),
+            (VREF_SWITCH_INSTANCE_NAME, "control_bar", "control_bar_E", (vref_select_bar_x, -1.0), 0.55, layer),
+            (VSS_SWITCH_INSTANCE_NAME, "control", "control_W", (right_xmin + 0.5, -2.0), 0.65, layer),
         )
         access_points = {}
         terminal_access = {}
@@ -120,14 +126,14 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
             obstacles=(),
         )
 
-    def test_runtime_geometry_drives_opposite_perimeter_channels(self):
+    def test_runtime_geometry_drives_north_perimeter_and_central_trunk(self):
         routes = plan_reference_selector_topology(
             intent=self._intent(),
             physical_design=self._snapshot(),
         )
         self.assertEqual(len(routes.common_plan.segments), 1)
         self.assertEqual(len(routes.select_plan.segments), 5)
-        self.assertEqual(len(routes.select_bar_plan.segments), 5)
+        self.assertEqual(len(routes.select_bar_plan.segments), 3)
         self.assertEqual(routes.common_plan.segments[0].layer, (88, 2))
         self.assertEqual(routes.common_plan.metrics.resolved_width, 0.7)
         self.assertEqual(routes.select_plan.metrics.resolved_width, 0.5)
@@ -138,14 +144,42 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
         self.assertLess(north_horizontal.start[0], -3.0)
         self.assertGreater(north_horizontal.end[0], 7.0)
 
-        south_horizontal = routes.select_bar_plan.segments[2]
-        self.assertEqual(south_horizontal.start[1], -6.775)
-        self.assertLess(south_horizontal.start[0], -3.0)
-        self.assertGreater(south_horizontal.end[0], 7.0)
+        self.assertEqual(
+            routes.select_bar_plan.selected_access_point_names,
+            (
+                f"{VREF_SWITCH_INSTANCE_NAME}__control_bar_E",
+                f"{VSS_SWITCH_INSTANCE_NAME}__control_W",
+            ),
+        )
+        central_trunk = routes.select_bar_plan.segments[1]
+        self.assertEqual(central_trunk.orientation, "vertical")
+        self.assertEqual(central_trunk.start, (2.0, -1.0))
+        self.assertEqual(central_trunk.end, (2.0, -2.0))
+        self.assertGreater(
+            central_trunk.start[0]
+            - routes.select_bar_plan.metrics.resolved_width / 2.0,
+            0.0,
+        )
+        self.assertLess(
+            central_trunk.start[0]
+            + routes.select_bar_plan.metrics.resolved_width / 2.0,
+            4.0,
+        )
+        self.assertEqual(routes.select_bar_plan.metrics.bend_count, 2)
+        self.assertEqual(routes.select_bar_plan.metrics.total_length, 6.0)
         self.assertEqual(
             routes.select_bar_plan.strategy,
-            "reference_selector_south_perimeter_control",
+            "reference_selector_central_gap_control",
         )
+
+    def test_central_trunk_x_is_derived_from_runtime_child_bboxes(self):
+        routes = plan_reference_selector_topology(
+            intent=self._intent(),
+            physical_design=self._snapshot(right_xmin=8.0),
+        )
+        central_trunk = routes.select_bar_plan.segments[1]
+        self.assertEqual(central_trunk.start[0], 4.0)
+        self.assertEqual(central_trunk.end[0], 4.0)
 
     def test_explicit_width_is_policy(self):
         routes = plan_reference_selector_topology(
@@ -168,6 +202,20 @@ class ReferenceSelectorTopologyTests(unittest.TestCase):
             plan_reference_selector_topology(
                 intent=self._intent(),
                 physical_design=self._snapshot(right_xmin=-0.5),
+            )
+
+    def test_child_gap_must_contain_central_trunk_width(self):
+        with self.assertRaises(RuntimeError):
+            plan_reference_selector_topology(
+                intent=self._intent(),
+                physical_design=self._snapshot(right_xmin=0.5),
+            )
+
+    def test_inner_accesses_must_face_central_trunk(self):
+        with self.assertRaises(RuntimeError):
+            plan_reference_selector_topology(
+                intent=self._intent(),
+                physical_design=self._snapshot(vref_select_bar_x=2.5),
             )
 
 

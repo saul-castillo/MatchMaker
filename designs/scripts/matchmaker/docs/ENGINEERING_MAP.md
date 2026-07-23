@@ -6,14 +6,14 @@ This is the canonical live-state document for the engine. Read it before changin
 
 ```text
 base: main
-branch: feature/cdac-layout-foundation
-PR: #5
-PR #1-#4: merged
-CI: passing at the latest code head before this documentation update
-merge scope: validated CDAC layout foundation plus an explicitly unresolved B0 selector prototype
+branch: main (direct-update workflow)
+PR: none
+PR #1-#5: merged
+local checks: 71 pure-Python tests passing; source/examples compile
+active checkpoint: single-trunk B0 selector topology; /foss validation pending
 ```
 
-PR #5 must not claim a completed selector or completed CDAC. The validated merge boundary is:
+PR #5 merged the following validated boundary:
 
 ```text
 typed CDAC specifications and manifest
@@ -23,7 +23,9 @@ generated base transmission gate with DRC, extraction, and exact connectivity
 selector hierarchy, planner, failure history, and reproducible failing checkpoint
 ```
 
-Scaled selectors, complete CDAC placement, CDAC routing, supplies, and LVS belong after PR #5.
+The current selector-connectivity change only addresses the unresolved B0 control topology.
+Scaled selectors, complete CDAC placement, CDAC routing, supplies, and LVS remain
+outside its scope.
 
 ## Source of truth
 
@@ -297,25 +299,26 @@ but both face the inter-child gap rather than the outer selector perimeter.
 
 Attempt 3 instead used `VREF control_bar_W` and `VSS control_E`; those directions point through each TG interior. DRC remained clean, but child-level extraction did not recognize the intended shared control nets.
 
-This diagnosis must be verified from the extracted netlist before changing code.
+The pre-squash PR #5 history preserves the exact Attempt 2 route and confirms that
+`VREF control_bar_E` and `VSS control_W` produced DRC-clean geometry and all three
+expected extracted shared nets. The original extracted netlist was not committed,
+so the access-direction root-cause diagnosis remains a hypothesis until the new
+topology is rerun in `/foss`.
 
-## Exact next-session task
+## Active selector-connectivity checkpoint
 
-Create a fresh branch from merged `main`, suggested name:
+Implemented directly on `main` for this checkpoint:
 
-```text
-feature/cdac-selector-connectivity
-```
+- the clean north-perimeter `SELECT` route is unchanged;
+- `SELECT_BAR` selects the electrically proven inner-gap accesses;
+- the planner derives one trunk x-coordinate from the two runtime child bboxes;
+- two horizontal branches and one vertical trunk replace the folded U-turn;
+- the planner fails if the gap cannot contain the resolved route width or if the
+  selected accesses do not face the trunk;
+- `select_bar_S` is placed on the vertical trunk;
+- focused pure-Python planner tests and source/example compilation pass.
 
-Do not begin scaled selectors or complete CDAC assembly first.
-
-Recovery sequence:
-
-1. Reproduce Attempt 3 and inspect the extracted selector netlist and connectivity report.
-2. Compare the child subcircuit pin participation of Attempt 2 and Attempt 3.
-3. Verify which `control/control_bar` W/E accesses are true extractable child pins after hierarchy placement.
-4. Preserve the clean north-perimeter `SELECT` path.
-5. Replace the folded `SELECT_BAR` path with a single-trunk central-gap topology using the proven inner-gap accesses:
+The resulting `SELECT_BAR` topology is:
 
 ```text
 VREF control_bar_E
@@ -324,23 +327,23 @@ VREF control_bar_E
 -> horizontal branch to VSS control_W
 ```
 
-This removes the U-turn and close parallel legs while retaining the access pair that previously extracted correctly. A branch port may be placed on the central trunk. Use ordinary RoutePlan segments; do not add a specialized executor.
-6. Require DRC=0, extraction passed, exact shared selector net count=3, and visual acceptance.
-7. Only then validate B1/B2/B3 scaled selectors.
+This removes the U-turn and close parallel legs while retaining the access pair
+that previously extracted correctly. It still emits ordinary `RoutePlan`
+segments and uses the existing mechanical executor.
 
-## Merge posture for PR #5
+### Exact next physical gate
 
-PR #5 is suitable to merge as a foundation when all of the following are true:
-
-```text
-CI passes
-ENGINEERING_MAP.md reflects the unresolved selector boundary
-VALIDATION_STATUS.md records all three selector attempts
-PR description does not claim selector completion
-PR remains explicit that full CDAC placement/routing and LVS are not complete
-```
-
-The selector prototype stays in the branch because it provides the hierarchy, typed contracts, pure tests, reproducible failure, and the correct starting point for the next branch. It is not a validated reusable selector primitive yet.
+1. Run `generate_gf180_reference_selector.py` in the Chipathon `/foss`
+   environment.
+2. Confirm the reported `SELECT_BAR` access pair, three-segment central-trunk
+   topology, and trunk-centered public port.
+3. Require DRC=0, extraction passed, exact shared selector net count=3, and
+   pre-LVS checks passed.
+4. Visually reject any device-interior crossing, narrow parallel-leg coupling,
+   or unintended asymmetry.
+5. Only after that evidence passes, update `VALIDATION_STATUS.md` and treat B0 as
+   a reusable selector primitive.
+6. Only then validate B1/B2/B3 scaled selectors.
 
 ## Work after selector closure
 

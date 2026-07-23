@@ -155,9 +155,9 @@ def plan_reference_selector_topology(
 ) -> ReferenceSelectorRouteBundle:
     """Plan the common output and complementary control topology.
 
-    The complementary controls use opposite perimeter channels. Both routes leave
-    through outward-facing horizontal gate accesses, so no vertical leg crosses a
-    child transmission-gate envelope and no narrow center fold is introduced.
+    SELECT uses the proven outward-facing north-perimeter path. SELECT_BAR uses
+    the proven inner-facing child accesses and one vertical trunk centered in the
+    gap between child transmission-gate envelopes.
     """
 
     vref_instance = physical_design.instance(VREF_SWITCH_INSTANCE_NAME)
@@ -243,41 +243,51 @@ def plan_reference_selector_topology(
         physical_design,
         instance_name=VREF_SWITCH_INSTANCE_NAME,
         terminal_name="control_bar",
-        child_port_name="control_bar_W",
+        child_port_name="control_bar_E",
     )
     vss_select_bar = _access(
         physical_design,
         instance_name=VSS_SWITCH_INSTANCE_NAME,
         terminal_name="control",
-        child_port_name="control_E",
+        child_port_name="control_W",
     )
     select_bar_width = _resolved_width(
         intent=intent,
         first=vref_select_bar,
         second=vss_select_bar,
     )
-    select_bar_offset = intent.policy.channel_clearance + select_bar_width / 2.0
-    select_bar_left = vref_instance.bbox.xmin - select_bar_offset
-    select_bar_right = vss_instance.bbox.xmax + select_bar_offset
-    bottom_channel = (
-        min(vref_instance.bbox.ymin, vss_instance.bbox.ymin) - select_bar_offset
-    )
+    child_gap = vss_instance.bbox.xmin - vref_instance.bbox.xmax
+    if child_gap <= select_bar_width:
+        raise RuntimeError(
+            "reference-selector child gap cannot contain the SELECT_BAR trunk: "
+            f"gap={child_gap}, route_width={select_bar_width}"
+        )
+    central_x = (vref_instance.bbox.xmax + vss_instance.bbox.xmin) / 2.0
+    if not (
+        vref_select_bar.center[0]
+        < central_x
+        < vss_select_bar.center[0]
+    ):
+        raise RuntimeError(
+            "reference-selector SELECT_BAR accesses do not face the central gap: "
+            f"left={vref_select_bar.center!r}, central_x={central_x}, "
+            f"right={vss_select_bar.center!r}"
+        )
     select_bar_plan = _route_plan(
         net_name=SELECT_BAR_NET_NAME,
         first=vref_select_bar,
         second=vss_select_bar,
-        points=_perimeter_points(
-            first=vref_select_bar,
-            second=vss_select_bar,
-            left_channel=select_bar_left,
-            right_channel=select_bar_right,
-            horizontal_channel=bottom_channel,
+        points=(
+            vref_select_bar.center,
+            (central_x, vref_select_bar.center[1]),
+            (central_x, vss_select_bar.center[1]),
+            vss_select_bar.center,
         ),
         intent=intent,
-        strategy="reference_selector_south_perimeter_control",
+        strategy="reference_selector_central_gap_control",
         detail=(
-            f"south perimeter channel y={bottom_channel}, "
-            f"x={select_bar_left}..{select_bar_right}"
+            f"single central-gap trunk x={central_x}, "
+            f"child gap={child_gap}"
         ),
     )
 

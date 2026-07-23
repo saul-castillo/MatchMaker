@@ -73,15 +73,18 @@ def _add_route_midpoint_port(
     name: str,
     plan,
     orientation: float,
+    segment_orientation: str = "horizontal",
 ) -> None:
-    horizontal = tuple(
+    candidates = tuple(
         segment
         for segment in plan.segments
-        if segment.start[1] == segment.end[1]
+        if segment.orientation == segment_orientation
     )
-    if not horizontal:
-        raise RuntimeError(f"route {plan.net_name!r} has no horizontal segment")
-    segment = max(horizontal, key=lambda candidate: candidate.length)
+    if not candidates:
+        raise RuntimeError(
+            f"route {plan.net_name!r} has no {segment_orientation} segment"
+        )
+    segment = max(candidates, key=lambda candidate: candidate.length)
     center = (
         (segment.start[0] + segment.end[0]) / 2.0,
         (segment.start[1] + segment.end[1]) / 2.0,
@@ -128,6 +131,7 @@ def _promote_selector_ports(
         name="select_bar_S",
         plan=routes.select_bar_plan,
         orientation=270.0,
+        segment_orientation="vertical",
     )
     return ("vref_W", "vss_E", "common_N", "select_N", "select_bar_S")
 

@@ -278,7 +278,9 @@ PVT, mismatch, or extracted-parasitic simulation
 
 ## Next physical checkpoint
 
-After PR #5 merges, reproduce Attempts 2 and 3 on a new selector-connectivity branch. Inspect the extracted child pin participation, then replace the folded two-leg corridor with one central trunk using the electrically proven inter-child-gap access pair:
+The selector-connectivity branch now replaces the folded two-leg corridor with
+one bbox-derived central trunk using the electrically proven inter-child-gap
+access pair:
 
 ```text
 VREF control_bar_E
@@ -286,6 +288,10 @@ VREF control_bar_E
 -> one vertical trunk
 -> horizontal branch to VSS control_W
 ```
+
+This topology has pure-planner coverage but no new `/foss` evidence yet. Run the
+reference-selector generation example and inspect the GDS before changing the
+validated/not-validated boundary above.
 
 Required acceptance remains:
 
