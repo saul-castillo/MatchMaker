@@ -4,7 +4,10 @@ from matchmaker.design.transmission_gate_naming import (
     NMOS_INSTANCE_NAME,
     PMOS_INSTANCE_NAME,
 )
-from matchmaker.physical.gf180_mos_access import gf180_mos_external_port_name
+from matchmaker.physical.gf180_mos_access import (
+    gf180_mos_bulk_tie_port_name,
+    gf180_mos_external_port_name,
+)
 from matchmaker.physical.models import PhysicalDesignSnapshot
 from matchmaker.physical.transmission_gate_snapshot import (
     create_transmission_gate_device_snapshot,
@@ -67,6 +70,13 @@ def _promoted_access_name(
     )
 
 
+def _promoted_bulk_tie_access_name(
+    instance_name: str,
+    direction: str,
+) -> str:
+    return f"{instance_name}__{gf180_mos_bulk_tie_port_name(direction)}"
+
+
 def _promote_public_ports(
     *,
     intent: TransmissionGateLayoutIntent,
@@ -118,17 +128,29 @@ def _promote_public_ports(
             )
             public_ports.append(public_name)
 
+    for direction in intent.policy.supply_directions:
+        for public_terminal, instance_name in (
+            ("vss", NMOS_INSTANCE_NAME),
+            ("vdd", PMOS_INSTANCE_NAME),
+        ):
+            public_name = f"{public_terminal}_{direction}"
+            _copy_component_port(
+                component,
+                new_name=public_name,
+                source_name=_promoted_bulk_tie_access_name(
+                    instance_name,
+                    direction,
+                ),
+            )
+            public_ports.append(public_name)
+
     return tuple(public_ports)
 
 
 def generate_transmission_gate(
     intent: TransmissionGateLayoutIntent,
 ) -> GeneratedTransmissionGate:
-    """Generate one transmission gate from typed intent through route execution.
-
-    Bulk/supply semantics are intentionally excluded until the installed
-    primitive's metal tie and substrate-tap exports are identified separately.
-    """
+    """Generate one transmission gate from typed intent through route execution."""
 
     placement = build_transmission_gate_device_placement(intent)
     physical_design = create_transmission_gate_device_snapshot(placement)

@@ -2,6 +2,7 @@ import unittest
 
 from matchmaker.physical.gf180_mos_access import (
     classify_gf180_mos_external_port_name,
+    gf180_mos_bulk_tie_port_name,
 )
 from matchmaker.physical.models import (
     AccessPoint,
@@ -27,9 +28,22 @@ class Gf180MosExternalAccessTests(unittest.TestCase):
             classify_gf180_mos_external_port_name("gate_E"),
             ("gate", "E"),
         )
+        self.assertIsNone(classify_gf180_mos_external_port_name("well_N"))
+
+    def test_only_cardinal_top_metal_tie_exports_are_bulk_accesses(self):
         self.assertEqual(
-            classify_gf180_mos_external_port_name("well_N"),
+            classify_gf180_mos_external_port_name("tie_N_top_met_N"),
             ("bulk", "N"),
+        )
+        self.assertIsNone(
+            classify_gf180_mos_external_port_name("tie_N_top_met_E")
+        )
+        self.assertIsNone(
+            classify_gf180_mos_external_port_name("guardring_N_top_met_N")
+        )
+        self.assertEqual(
+            gf180_mos_bulk_tie_port_name("s"),
+            "tie_S_top_met_S",
         )
 
     def test_nested_names_are_rejected(self):
@@ -47,6 +61,15 @@ class TransmissionGateTopologyTests(unittest.TestCase):
                 pmos=MosDeviceSpec("test_pmos", "pfet", 7.1, 0.31),
             ),
             policy=TransmissionGateLayoutPolicy(route_width=route_width),
+        )
+
+    def test_default_intent_requires_primitive_bulk_ties(self):
+        intent = self._intent()
+        self.assertIs(intent.nmos_primitive_options.with_tie, True)
+        self.assertIs(intent.pmos_primitive_options.with_tie, True)
+        self.assertEqual(
+            intent.policy.supply_directions,
+            ("N", "E", "S", "W"),
         )
 
     def _snapshot(self, *, output_y=4.0):

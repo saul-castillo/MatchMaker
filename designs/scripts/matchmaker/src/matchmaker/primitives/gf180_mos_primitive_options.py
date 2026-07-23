@@ -29,3 +29,13 @@ class Gf180MosPrimitiveOptions:
     substrate_tap_layers: tuple[str, str] | None = None
 
     extra_kwargs: Mapping[str, Any] = field(default_factory=dict)
+
+
+def make_gf180_bulk_tied_mos_options() -> Gf180MosPrimitiveOptions:
+    """Require the primitive's conductive body-tie ring explicitly.
+
+    Substrate taps, deep wells, and tie-metal layers remain unspecified until
+    their installed-GF180 behavior is measured independently in ``/foss``.
+    """
+
+    return Gf180MosPrimitiveOptions(with_tie=True)

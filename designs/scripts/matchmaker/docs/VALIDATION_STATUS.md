@@ -102,6 +102,12 @@ PMOS: W=8.0 µm, L=0.28 µm
 
 Both devices expose cardinal gate/source/drain accesses on the observed runtime metal layer `(36, 0)`. E/W signal widths are 0.5 µm. `well_*` ports are well-definition boundaries and are not accepted as VDD/VSS metal accesses.
 
+The historical `canonical external port count: 16` above was emitted by the
+former adapter, which still classified four `well_*` boundaries as bulk
+accesses. It therefore proves neither conductive body-tie access nor supply
+connectivity. Main now recognizes only exact cardinal `tie_*_top_met_*` exports
+as bulk, but that revised contract has not yet been run in `/foss`.
+
 ### Generated base/reset transmission gate
 
 Command:
@@ -306,11 +312,26 @@ PVT, mismatch, or extracted-parasitic simulation
 
 ## Next physical checkpoint
 
-Resolve explicit generated-MOS supply and bulk/well connectivity, then run
-independent Magic/Netgen LVS on the base TG and B0 selector before scaling the
-selector hierarchy. The existing pre-LVS checks intentionally cover only the
-signal/control shared-net multiplicities; they do not substitute for a complete
-device-and-net comparison against the hand-authored schematics.
+Validate the revised conductive bulk-tie contract first:
+
+```bash
+python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
+python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
+```
+
+The diagnostic must report exactly four `bulk` accesses per device, named
+`tie_N_top_met_N`, `tie_E_top_met_E`, `tie_S_top_met_S`, and
+`tie_W_top_met_W`, along with their runtime layers and widths. The TG run must
+show promoted `vss_*`/`vdd_*` ports while retaining zero DRC violations,
+successful extraction, and exactly two shared signal nets. Any missing tie,
+unexpected layer split, DRC failure, or connectivity change blocks selector
+supply routing.
+
+After that evidence is recorded, add explicit generated-MOS supply topology and
+run independent Magic/Netgen LVS on the base TG and B0 selector before scaling
+the selector hierarchy. The existing pre-LVS checks intentionally cover only
+the signal/control shared-net multiplicities; they do not substitute for a
+complete device-and-net comparison against the hand-authored schematics.
 
 After leaf LVS passes, validate B1/B2/B3 with the same flow. Full-CDAC LVS becomes
 meaningful only after all four selectors, the reset TG, all 16 MIM capacitors,

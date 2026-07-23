@@ -34,7 +34,8 @@ def main() -> int:
         description=(
             "Generate the base CDAC transmission gate from typed intent, run "
             "GF180 Magic DRC/extraction, and require exactly two shared signal nets. "
-            "Bulk/supply port assignment remains a later gate."
+            "Metal body-tie accesses are promoted as VSS/VDD candidates; "
+            "independent LVS remains a later gate."
         )
     )
     parser.add_argument(

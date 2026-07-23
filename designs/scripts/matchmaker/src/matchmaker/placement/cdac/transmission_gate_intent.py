@@ -3,6 +3,7 @@ from typing import Literal
 
 from matchmaker.primitives.gf180_mos_primitive_options import (
     Gf180MosPrimitiveOptions,
+    make_gf180_bulk_tied_mos_options,
 )
 from matchmaker.specs.transmission_gate_spec import TransmissionGateSpec
 
@@ -28,6 +29,7 @@ class TransmissionGateLayoutPolicy:
     inner_pmos_direction: HorizontalSide = "W"
     external_directions: tuple[HorizontalSide, ...] = ("W", "E")
     control_directions: tuple[CardinalDirection, ...] = ("W", "E")
+    supply_directions: tuple[CardinalDirection, ...] = ("N", "E", "S", "W")
     route_width: float | None = None
     alignment_tolerance: float = 1e-6
 
@@ -42,10 +44,14 @@ class TransmissionGateLayoutPolicy:
             raise ValueError("at least one external signal access direction is required")
         if not self.control_directions:
             raise ValueError("at least one control access direction is required")
+        if not self.supply_directions:
+            raise ValueError("at least one supply access direction is required")
         if len(set(self.external_directions)) != len(self.external_directions):
             raise ValueError("external signal access directions must be unique")
         if len(set(self.control_directions)) != len(self.control_directions):
             raise ValueError("control access directions must be unique")
+        if len(set(self.supply_directions)) != len(self.supply_directions):
+            raise ValueError("supply access directions must be unique")
         if self.route_width is not None and self.route_width <= 0:
             raise ValueError("explicit transmission-gate route width must be positive")
         if self.alignment_tolerance < 0:
@@ -62,10 +68,10 @@ class TransmissionGateLayoutIntent:
         default_factory=TransmissionGateLayoutPolicy
     )
     nmos_primitive_options: Gf180MosPrimitiveOptions = field(
-        default_factory=Gf180MosPrimitiveOptions
+        default_factory=make_gf180_bulk_tied_mos_options
     )
     pmos_primitive_options: Gf180MosPrimitiveOptions = field(
-        default_factory=Gf180MosPrimitiveOptions
+        default_factory=make_gf180_bulk_tied_mos_options
     )
 
     def __post_init__(self) -> None:

@@ -1,4 +1,5 @@
 import argparse
+from collections import Counter
 from inspect import signature
 from pathlib import Path
 
@@ -11,6 +12,9 @@ from matchmaker.primitives.gf180_mos_primitive_factory import (
     create_gf180_mos_primitive,
     nmos,
     pmos,
+)
+from matchmaker.primitives.gf180_mos_primitive_options import (
+    make_gf180_bulk_tied_mos_options,
 )
 from matchmaker.specs.banked_cdac_spec import (
     make_gf180_4bit_banked_cdac_reference_spec,
@@ -39,12 +43,27 @@ def _report_port(prefix: str, port, *, terminal: str | None = None) -> None:
     )
 
 
+def _is_cardinal_tie_top_metal_candidate(port_name: str) -> bool:
+    parts = port_name.split("_")
+    return (
+        len(parts) == 5
+        and parts[0].lower() == "tie"
+        and parts[1].upper() in {"N", "E", "S", "W"}
+        and parts[2].lower() == "top"
+        and parts[3].lower() == "met"
+        and parts[4].upper() in {"N", "E", "S", "W"}
+    )
+
+
 def _report_device(label: str, component, *, full_ports: bool) -> None:
     ports = sorted(_ports(component), key=lambda port: str(getattr(port, "name", "")))
     canonical = []
     simple_unclassified = []
+    cardinal_tie_candidates = []
     for port in ports:
         port_name = str(getattr(port, "name", ""))
+        if _is_cardinal_tie_top_metal_candidate(port_name):
+            cardinal_tie_candidates.append(port_name)
         classification = classify_gf180_mos_external_port_name(port_name)
         if classification is not None:
             canonical.append((port, classification[0]))
@@ -54,9 +73,22 @@ def _report_device(label: str, component, *, full_ports: bool) -> None:
     print(f"{label} component name: {component.name}")
     print(f"{label} bbox: {component.bbox}")
     print(f"{label} raw port count: {len(ports)}")
-    print(f"{label} canonical external port count: {len(canonical)}")
+    terminal_counts = Counter(terminal for _, terminal in canonical)
+    print(f"{label} routable external port count: {len(canonical)}")
+    print(
+        f"{label} routable terminal counts: "
+        + ", ".join(
+            f"{terminal}={terminal_counts[terminal]}"
+            for terminal in sorted(terminal_counts)
+        )
+    )
     for port, terminal in canonical:
         _report_port(f"{label} external port", port, terminal=terminal)
+
+    print(
+        f"{label} cardinal tie top-metal candidates: "
+        + ", ".join(cardinal_tie_candidates)
+    )
 
     print(f"{label} simple unclassified port count: {len(simple_unclassified)}")
     for port in simple_unclassified:
@@ -85,13 +117,21 @@ def main() -> int:
     if switch is None:
         raise RuntimeError("reference preset does not define a reset switch")
 
-    nmos_component = create_gf180_mos_primitive(switch.nmos)
-    pmos_component = create_gf180_mos_primitive(switch.pmos)
+    primitive_options = make_gf180_bulk_tied_mos_options()
+    nmos_component = create_gf180_mos_primitive(
+        switch.nmos,
+        primitive_options=primitive_options,
+    )
+    pmos_component = create_gf180_mos_primitive(
+        switch.pmos,
+        primitive_options=primitive_options,
+    )
 
     print(f"nmos callable: {nmos.__module__}.{nmos.__name__}")
     print(f"nmos signature: {signature(nmos)}")
     print(f"pmos callable: {pmos.__module__}.{pmos.__name__}")
     print(f"pmos signature: {signature(pmos)}")
+    print(f"explicit primitive options: {primitive_options}")
     print(
         "requested switch dimensions: "
         f"nmos=(W={switch.nmos.width}, L={switch.nmos.length}), "

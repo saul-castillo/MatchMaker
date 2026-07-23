@@ -15,7 +15,7 @@ from matchmaker.physical.models import (
 from matchmaker.placement.core.placement_result import PlacementResult
 
 
-_REQUIRED_SIGNAL_TERMINALS = frozenset({"gate", "source", "drain"})
+_REQUIRED_ROUTABLE_TERMINALS = frozenset({"gate", "source", "drain", "bulk"})
 
 
 def _normalize_layer(layer):
@@ -64,7 +64,7 @@ def create_transmission_gate_device_snapshot(
             classified_ports.append((primitive_port, terminal_name, direction))
             observed_terminals.add(terminal_name)
 
-        missing = sorted(_REQUIRED_SIGNAL_TERMINALS - observed_terminals)
+        missing = sorted(_REQUIRED_ROUTABLE_TERMINALS - observed_terminals)
         if missing:
             raise RuntimeError(
                 f"placed MOS instance {instance_name!r} lacks required external "
