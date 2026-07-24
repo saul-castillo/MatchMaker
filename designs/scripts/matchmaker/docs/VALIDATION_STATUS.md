@@ -53,7 +53,7 @@ connectivity or LVS claim is made.
 
 ## GF180 MOS access contract
 
-The accepted conductive bulk grammar is limited to:
+Accepted conductive bulk grammar:
 
 ```text
 tie_N_top_met_N
@@ -62,9 +62,7 @@ tie_S_top_met_S
 tie_W_top_met_W
 ```
 
-`well_*` boundaries are geometry markers and are not electrical routing
-accesses.
-
+`well_*` boundaries are geometry markers and are not electrical routing accesses.
 Measured on 2026-07-23:
 
 ```text
@@ -81,7 +79,7 @@ E/W body ties:
   PMOS width: 11.81
 ```
 
-ADR 0005 now requires the generated-TG leaf profile:
+ADR 0005 requires the generated-TG leaf profile:
 
 ```text
 conductive body ties: on
@@ -93,13 +91,19 @@ dummies: off on both sides
 
 ## Base transmission-gate evidence
 
+Canonical generated cell:
+
+```text
+gf180_cdac_base_transmission_gate_demo
+```
+
 Command:
 
 ```bash
 python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
 ```
 
-The pre-compact-profile run established:
+The measured leaf established:
 
 ```text
 instances: 2
@@ -115,22 +119,19 @@ shared signal net count: 2
 pre-LVS checks passed: True
 ```
 
-Because the compact profile changes primitive geometry, regenerate the base TG
-before running its independent LVS unless current `/foss` output confirms these
-same gates.
+Regenerate the compact-profile base TG before independent LVS unless current
+`/foss` output confirms the same gates.
 
 ## B0 selector validation history
 
-All attempts use two independently generated transmission-gate child cells. The
-eventual shared nets are:
+Canonical generated cell:
 
 ```text
-COMMON
-SELECT
-SELECT_BAR
-VSS
-VDD
+gf180_cdac_b0_reference_selector_demo
 ```
+
+All attempts use two independently generated transmission-gate children. The five
+shared nets are `COMMON`, `SELECT`, `SELECT_BAR`, `VSS`, and `VDD`.
 
 ### Attempt 1: internal vertical escapes — rejected
 
@@ -163,7 +164,7 @@ shared selector net count: 1
 pre-LVS checks passed: False
 ```
 
-The chosen SELECT_BAR access directions extended through TG interiors.
+The selected `SELECT_BAR` accesses extended through TG interiors.
 
 ### Attempt 4: single central trunk — accepted three-net checkpoint
 
@@ -196,8 +197,8 @@ shared selector net count: 4
 pre-LVS checks passed: False
 ```
 
-The result was consistent with a missing VDD connection. The 5.68:1 control
-length ratio and nested perimeter routing were visually rejected.
+The result was consistent with a missing VDD connection. The 5.68:1 control-length
+ratio and nested perimeter routing were visually rejected.
 
 ### Attempt 6: balanced horizontal met3 controls — rejected
 
@@ -222,18 +223,8 @@ large met3 half-perimeters, and VSS service geometry were rejected.
 
 ### Attempt 7a: vertical family-composable selector — short identified
 
-The first vertical run from `ff61776` used:
-
-```text
-VREF_TG=R0 / VSS_TG=R180
-SELECT: west met2 side bus
-SELECT_BAR: matched east met2 side bus
-COMMON: west transitioned trunk
-VSS: east/gap transitioned trunk
-VDD: direct inter-child met2 bridge
-```
-
-Observed:
+The first vertical run from `ff61776` used west/east control buses, transitioned
+COMMON/VSS trunks, and a direct inter-child VDD bridge.
 
 ```text
 DRC violations: 0
@@ -244,7 +235,6 @@ pre-LVS checks passed: False
 
 Child-interface inspection proved that PMOS VDD merged into `VSUBS`. Visual
 inspection found the VDD escape crossing an inherited outer substrate ring.
-This changed the diagnosis from “VDD missing” to “VDD shorted to substrate.”
 
 ### Attempt 7b: compact-profile vertical selector — accepted five-net checkpoint
 
@@ -252,19 +242,16 @@ Observed in `/foss` on 2026-07-24 after commit `c0de1b9`:
 
 ```text
 child placement: compact vertical VREF_TG=R0 / VSS_TG=R180
-
 VSS strategy: transitioned_vertical_trunk_tree
 VSS length: 37.44
 VSS vias: 3
 VSS layers: (36, 0), (42, 0)
-
 VDD strategy: vertical_gap_bridge
 VDD accesses: VREF_TG__vdd_S, VSS_TG__vdd_S
 VDD length: 10.86
 VDD bends: 2
 VDD vias: 0
 VDD layer: (36, 0)
-
 DRC passed: True
 DRC violations: 0
 extraction passed: True
@@ -273,9 +260,7 @@ shared selector net count: 5
 pre-LVS checks passed: True
 ```
 
-The five shared nets consisted of four Magic-generated unnamed nets plus
-`VSUBS`, as expected from the extracted hierarchy. The child-interface report
-provided the terminal-level evidence missing from earlier attempts:
+Terminal-level evidence:
 
 ```text
 both VREF/VSS child PMOS VDD terminals -> the same unnamed shared net
@@ -284,11 +269,30 @@ VDD net != VSUBS
 ```
 
 Visual inspection accepted the compact vertical two-row arrangement. No supply
-escape crossed an inherited outer substrate ring. The external buses remain
-longer than ideal, but no further geometric optimization is permitted before
-leaf LVS.
+escape crossed an inherited outer substrate ring. No further geometric
+optimization is permitted before leaf LVS.
 
 **Acceptance:** Attempt 7b closes B0 at the five-net pre-LVS boundary.
+
+## Generated-name correction before leaf LVS
+
+The first leaf-LVS runner incorrectly expected:
+
+```text
+gf180_cdac_transmission_gate_demo
+```
+
+The generator has always used:
+
+```text
+gf180_cdac_base_transmission_gate_demo
+```
+
+The duplicated literal has been removed. Generators and LVS targets now import
+canonical names from `outputs/cdac_demo_cell_names.py`. The obsolete
+`gf180_cdac_transmission_gate_demo` directory contains only failed-run artifacts
+and may be deleted. It is not a selector directory. The active B0 selector remains
+`gf180_cdac_b0_reference_selector_demo`.
 
 ## Current demonstrated boundary
 
@@ -303,7 +307,7 @@ algorithmic inversion-symmetric capacitor placement
 canonical MIM and MOS access adapters
 explicit compact GF180 MOS leaf profile
 4 x 4 MIM array with zero DRC violations
-base-TG two-signal-net pre-LVS topology from the measured leaf
+base-TG two-signal-net pre-LVS topology
 B0 vertical selector with zero DRC violations
 B0 extraction and exact five-shared-net connectivity
 VDD terminal identity distinct from VSUBS
@@ -324,29 +328,30 @@ PVT, mismatch, or extracted-parasitic simulation
 
 ## Next verification checkpoint: leaf LVS
 
-The independent review schematics are:
+Independent references and generated layouts:
 
 ```text
 designs/libs/core_matchmaker/7D_tg_switch/7D_tg_switch.sch
   schematic top: 7D_tg_switch
-  generated layout top: gf180_cdac_transmission_gate_demo
+  generated layout top: gf180_cdac_base_transmission_gate_demo
 
 designs/libs/core_matchmaker/7D_ref_sel_2to1/7D_ref_sel_2to1.sch
   schematic top: 7D_ref_sel_2to1
   generated layout top: gf180_cdac_b0_reference_selector_demo
 ```
 
-Regenerate the layouts, then run:
+Run:
 
 ```bash
+cd /foss/designs
+git pull --ff-only
+rm -rf libs/core_analog/gf180_cdac_transmission_gate_demo
 python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
 python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
 python scripts/matchmaker/examples/verification/run_cdac_leaf_lvs.py --target all
 ```
 
-The runner exports each Xschem reference as an LVS SPICE netlist and explicitly
-binds its schematic top-cell name to the different generated layout top-cell
-name. Acceptance requires:
+Acceptance requires:
 
 ```text
 schematic netlist passed: True
@@ -356,9 +361,8 @@ no property errors
 no port errors
 ```
 
-Record the complete reports under each generated cell's `reports/lvs/`
-directory. If Netgen fails, preserve the report and diagnose pin order, model
-names, hierarchy flattening, device properties, and source/drain equivalence
-before changing geometry.
+Preserve complete reports under each generated cell's `reports/lvs/` directory.
+If Netgen fails, diagnose pin order, model names, hierarchy flattening, device
+properties, and source/drain equivalence before changing geometry.
 
 Only after both leaf cells pass LVS should B1/B2/B3 scaling begin.
