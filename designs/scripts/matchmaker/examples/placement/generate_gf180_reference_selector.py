@@ -11,6 +11,9 @@ from matchmaker.design.reference_selector_naming import (
 from matchmaker.generators.reference_selector_generator import (
     generate_reference_selector,
 )
+from matchmaker.outputs.cdac_demo_cell_names import (
+    GF180_CDAC_B0_REFERENCE_SELECTOR_DEMO_CELL_NAME,
+)
 from matchmaker.outputs.core_analog_cell_paths import create_core_analog_cell_paths
 from matchmaker.placement.cdac.reference_selector_intent import (
     ReferenceSelectorLayoutIntent,
@@ -30,7 +33,7 @@ from matchmaker.verification.netlist.spice_inspector import (
 )
 
 
-DEFAULT_CELL_NAME = "gf180_cdac_b0_reference_selector_demo"
+DEFAULT_CELL_NAME = GF180_CDAC_B0_REFERENCE_SELECTOR_DEMO_CELL_NAME
 
 
 def main() -> int:
