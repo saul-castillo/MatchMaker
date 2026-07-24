@@ -1,8 +1,8 @@
 # MatchMaker Engineering Map
 
 This is the canonical live-state document for the engine. Read it before changing
-code. Update it instead of creating another handoff file. Detailed physical
-evidence belongs in `VALIDATION_STATUS.md`; durable decisions belong in ADRs.
+code. Detailed physical evidence belongs in `VALIDATION_STATUS.md`; durable
+architecture decisions belong in ADRs.
 
 ## Current state
 
@@ -10,15 +10,13 @@ evidence belongs in `VALIDATION_STATUS.md`; durable decisions belong in ADRs.
 base: main
 branch: main (direct-update workflow)
 PR: none
-PR #1-#5: merged
 latest accepted physical checkpoint: vertical B0 selector, five shared nets
 latest accepted evidence date: 2026-07-24
 active checkpoint: independent base-TG and B0 schematic-to-layout Netgen LVS
 ```
 
 The compact MOS profile from ADR 0005 fixed the Attempt 7 VDD-to-`VSUBS` short.
-The regenerated vertical selector is now accepted at the five-net pre-LVS
-boundary:
+The regenerated vertical selector is accepted at the five-net pre-LVS boundary:
 
 ```text
 Magic DRC violations: 0
@@ -34,19 +32,17 @@ full extraction, and full-CDAC LVS remain outside the demonstrated boundary.
 
 ## Source of truth
 
-The generator never parses Xschem to decide layout.
-
 ```text
 typed generator specification
 -> CircuitManifest
 -> placement and routing generation
 -> generated layout/netlist
--> independent schematic comparison during LVS
+-> independent Xschem reference netlist
+-> Netgen LVS
 ```
 
-Schematics under `designs/libs/core_matchmaker/` are independent review and LVS
-references. They are not hierarchy, sizing, placement, coordinate, access, or
-routing input to MatchMaker.
+The generator never parses Xschem to decide layout. Schematics under
+`designs/libs/core_matchmaker/` are independent review and LVS references only.
 
 ## Non-negotiable invariants
 
@@ -55,47 +51,26 @@ routing input to MatchMaker.
 2. Algorithms do not hide bit counts, bank sizes, coordinates, primitive
    dimensions, port names, layers, widths, or spacing rules.
 3. Primitive port grammar is interpreted once in the matching family adapter.
-4. Runtime geometry supplies centers, orientations, layers, widths, and
-   envelopes.
-5. New placement returns stable `PlacementResult` bindings.
+4. Runtime geometry supplies centers, orientations, layers, widths, and envelopes.
+5. Placement returns stable `PlacementResult` bindings.
 6. Routing consumes typed `PhysicalDesignSnapshot` state and emits ordinary
    `RoutePlan` objects.
 7. Executors draw plans; they do not invent policy.
-8. Examples contain no reusable policy.
-9. DRC never proves connectivity or analog quality.
+8. Examples contain orchestration only, not reusable policy.
+9. DRC does not prove connectivity or analog quality.
 10. Extraction and shared-net counts do not replace terminal-level inspection.
 11. Pre-LVS checks do not replace independent schematic-to-layout LVS.
 12. Unsupported cases fail explicitly.
-13. Device-family port grammar stays in family adapters; composition and route
+13. Device-family grammar stays in family adapters; generic composition and route
     templates cannot inspect family-specific names.
-14. A block planner binds logical roles to reusable placement/routing primitives;
-    it does not become a private geometry generator.
-15. Safety-critical primitive options are explicit. `None` is not accepted when
-    it would inherit geometry-affecting gLayout defaults.
-16. Schematic and generated layout top-cell names are independent identities.
-    The LVS boundary must bind them explicitly rather than rename either source.
-
-## Canonical pipeline
-
-```text
-typed intent
--> device/hierarchy spec
--> CircuitManifest
--> placement intent and policy
--> PlacementPlan
--> geometry + PlacementResult
--> device-specific PhysicalDesignSnapshot
--> NetIntent / route-group / topology intent
--> RouteCandidate / RoutePlan
--> mechanical execution
--> GDS
--> Magic DRC
--> extraction and exact connectivity
--> independent Xschem reference netlist
--> Netgen LVS
-```
-
-Each module owns one translation.
+14. Block planners bind logical roles to reusable primitives; they do not become
+    private geometry generators.
+15. Safety-critical primitive options are explicit. `None` is not accepted when it
+    would inherit geometry-affecting gLayout defaults.
+16. Schematic and generated-layout top names are independent identities and must be
+    bound explicitly at the LVS boundary.
+17. Generated output names are shared constants. Generators, path creation, and LVS
+    targets must not duplicate cell-name literals.
 
 ## Reviewed GF180 CDAC instance
 
@@ -123,8 +98,7 @@ specs/
   typed MOS, MIM, transmission-gate, selector, bank, and CDAC specifications
 
 placement/core/
-  Tile, PlacementPlan, PlacementResult, transformed reference envelopes,
-  generic oriented-pair composition
+  PlacementPlan, PlacementResult, transformed envelopes, oriented-pair composition
 
 placement/cdac/
   capacitor-array, transmission-gate, and selector intent/builder bindings
@@ -132,17 +106,8 @@ placement/cdac/
 primitives/gf180_mos_primitive_options.py
   explicit compact MOS profile, validation, and diagnostics
 
-primitives/gf180_mos_primitive_factory.py
-  installed-signature alias resolution and GF180 primitive invocation
-
-physical/gf180_mos_access.py
-  gate/source/drain and conductive body-tie port grammar
-
-physical/transmission_gate_cell_access.py
-  demonstrated terminal/direction capability contract for generated TG cells
-
-physical/hierarchical_cell_snapshot.py
-  family-agnostic generated-child snapshot construction
+physical/
+  device-family access grammar and family-agnostic generated-child snapshots
 
 routing/planners/corridor_route_planner.py
   side bus, gap bridge, and transitioned multi-terminal trunk templates
@@ -151,26 +116,45 @@ routing/planners/reference_selector_topology_planner.py
   thin selector role binding and matching constraints
 
 routing/routers/route_plan_executor.py
-  mechanical segment and injected via execution
+  mechanical segment and injected-via execution
+
+outputs/cdac_demo_cell_names.py
+  canonical generated-cell identities shared by examples and verification
+
+outputs/core_analog_cell_paths.py
+  standard generated GDS, netlist, and report directory structure
 
 verification/netlist/xschem_schematic_netlist.py
   headless independent-reference SPICE export from Xschem
 
 verification/lvs/cdac_leaf_targets.py
-  explicit reviewed schematic/layout top-cell binding for base TG and B0
+  reviewed schematic/layout top-cell binding for base TG and B0
 
 verification/lvs/magic_netgen_lvs.py
   Magic extraction and Netgen comparison with distinct schematic/layout names
 
 examples/verification/run_cdac_leaf_lvs.py
-  orchestration only; no reusable device or geometry policy
-
-docs/adr/
-  durable decisions; ADR 0004 owns composition and ADR 0005 owns MOS profile
+  orchestration only; no reusable geometry or device policy
 ```
 
 Generic placement and corridor modules do not import selector net names, GF180
-port tokens, numeric layers, Xschem paths, or Netgen commands.
+port tokens, numeric layers, Xschem paths, Netgen commands, or output-directory
+names.
+
+## Canonical generated-cell names
+
+```text
+base transmission gate:
+  gf180_cdac_base_transmission_gate_demo
+
+B0 reference selector:
+  gf180_cdac_b0_reference_selector_demo
+```
+
+The obsolete `gf180_cdac_transmission_gate_demo` directory was created only by the
+first failed LVS run, which used a duplicated literal that omitted `base_`. It is
+not a reference-selector output and can be deleted. There is only one active B0
+reference-selector directory.
 
 ## Demonstrated physical boundary
 
@@ -187,8 +171,7 @@ Capacitor plates are not routed.
 
 ### Base transmission gate
 
-The pre-compact-profile run established the two signal nets and body-tie access
-grammar:
+The measured leaf established:
 
 ```text
 NMOS: W=4 µm, L=0.28 µm
@@ -202,7 +185,7 @@ pre-LVS checks: passed
 ```
 
 The compact-profile base TG must be regenerated before its independent LVS run
-unless a current `/foss` output confirms the same gates.
+unless current `/foss` output confirms the same gates.
 
 ### B0 selector: accepted five-net checkpoint
 
@@ -230,15 +213,20 @@ pre-LVS checks: passed
 ```
 
 The child-interface report showed both PMOS VDD terminals on one shared unnamed
-net while `VSUBS` remained separate. Visual inspection accepted the compact
-vertical arrangement and found no inherited outer substrate-ring crossing.
-
-This closes the selector at the five-net pre-LVS boundary. Do not redesign or
-compact it before leaf LVS.
+net while `VSUBS` remained separate. Do not redesign or compact this selector
+before leaf LVS.
 
 ## Exact next verification gate
 
-First ensure the latest generated GDS files exist:
+Synchronize and remove the obsolete failed-run directory:
+
+```bash
+cd /foss/designs
+git pull --ff-only
+rm -rf libs/core_analog/gf180_cdac_transmission_gate_demo
+```
+
+Regenerate the canonical layouts:
 
 ```bash
 python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
@@ -251,16 +239,16 @@ Then run independent reference netlisting and LVS:
 python scripts/matchmaker/examples/verification/run_cdac_leaf_lvs.py --target all
 ```
 
-The new verification boundary performs:
+The verification boundary is:
 
 ```text
 7D_tg_switch.sch
-  -> Xschem LVS SPICE netlist, top cell 7D_tg_switch
-  -> compare with layout top gf180_cdac_transmission_gate_demo
+  schematic top: 7D_tg_switch
+  layout top: gf180_cdac_base_transmission_gate_demo
 
 7D_ref_sel_2to1.sch
-  -> Xschem LVS SPICE netlist, top cell 7D_ref_sel_2to1
-  -> compare with layout top gf180_cdac_b0_reference_selector_demo
+  schematic top: 7D_ref_sel_2to1
+  layout top: gf180_cdac_b0_reference_selector_demo
 ```
 
 Acceptance requires both runs to report:
@@ -273,10 +261,9 @@ no property errors
 no port errors
 ```
 
-A first LVS mismatch is diagnostic evidence, not permission to alter geometry
-immediately. Inspect device counts, pin order, model names, source/drain
-equivalence, hierarchy flattening, and property normalization in the report
-before changing layout or schematic.
+A first LVS mismatch is diagnostic evidence, not permission to alter geometry.
+Inspect device counts, pin order, model names, source/drain equivalence, hierarchy
+flattening, and property normalization before changing layout or schematic.
 
 ## Work after leaf LVS
 
