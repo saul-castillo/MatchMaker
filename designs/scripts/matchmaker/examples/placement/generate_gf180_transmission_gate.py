@@ -11,6 +11,9 @@ from matchmaker.design.transmission_gate_naming import (
 from matchmaker.generators.transmission_gate_generator import (
     generate_transmission_gate,
 )
+from matchmaker.outputs.cdac_demo_cell_names import (
+    GF180_CDAC_BASE_TRANSMISSION_GATE_DEMO_CELL_NAME,
+)
 from matchmaker.outputs.core_analog_cell_paths import create_core_analog_cell_paths
 from matchmaker.placement.cdac.transmission_gate_intent import (
     TransmissionGateLayoutIntent,
@@ -26,7 +29,7 @@ from matchmaker.verification.netlist.shared_net_multiplicity import (
 )
 
 
-DEFAULT_CELL_NAME = "gf180_cdac_base_transmission_gate_demo"
+DEFAULT_CELL_NAME = GF180_CDAC_BASE_TRANSMISSION_GATE_DEMO_CELL_NAME
 
 
 def main() -> int:
