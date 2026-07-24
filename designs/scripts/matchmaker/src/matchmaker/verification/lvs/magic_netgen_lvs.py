@@ -46,6 +46,25 @@ def _netgen_output_passed(output: str) -> bool:
     )
 
 
+def _build_netgen_lvs_argv(
+    *,
+    netgen_bin: str,
+    schematic_netlist_path: Path,
+    schematic_cell_name: str,
+    layout_netlist_path: Path,
+    layout_cell_name: str,
+    setup_file: Path,
+) -> tuple[str, ...]:
+    return (
+        netgen_bin,
+        "-batch",
+        "lvs",
+        f"{schematic_netlist_path} {schematic_cell_name}",
+        f"{layout_netlist_path} {layout_cell_name}",
+        str(setup_file),
+    )
+
+
 def run_magic_netgen_lvs(
     gds_path: Path,
     schematic_netlist_path: Path,
@@ -53,13 +72,22 @@ def run_magic_netgen_lvs(
     layout_netlist_path: Path,
     report_path: Path,
     config: MagicNetgenLvsConfig | None = None,
+    *,
+    schematic_cell_name: str | None = None,
 ) -> MagicNetgenLvsResult:
-    """Extract a layout and compare it against a schematic netlist with Netgen."""
+    """Extract a layout and compare it against a schematic netlist with Netgen.
+
+    ``cell_name`` is the generated layout top cell. ``schematic_cell_name`` may
+    differ because independent hand-authored references use stable review-library
+    names rather than generated artifact names.
+    """
+
     config = config or MagicNetgenLvsConfig()
     gds_path = gds_path.resolve()
     schematic_netlist_path = schematic_netlist_path.resolve()
     layout_netlist_path = layout_netlist_path.resolve()
     report_path = report_path.resolve()
+    schematic_cell_name = schematic_cell_name or cell_name
 
     for required_path, description in [
         (gds_path, "GDS"),
@@ -110,14 +138,14 @@ def run_magic_netgen_lvs(
         )
 
     lvs_process = run_process(
-        argv=[
-            config.netgen_bin,
-            "-batch",
-            "lvs",
-            f"{schematic_netlist_path} {cell_name}",
-            f"{layout_netlist_path} {cell_name}",
-            str(setup_file),
-        ],
+        argv=_build_netgen_lvs_argv(
+            netgen_bin=config.netgen_bin,
+            schematic_netlist_path=schematic_netlist_path,
+            schematic_cell_name=schematic_cell_name,
+            layout_netlist_path=layout_netlist_path,
+            layout_cell_name=cell_name,
+            setup_file=setup_file,
+        ),
         cwd=report_path.parent,
         timeout_s=config.lvs_timeout_s,
         env=build_magic_environment(
@@ -130,9 +158,17 @@ def run_magic_netgen_lvs(
     passed = lvs_process.returncode == 0 and _netgen_output_passed(
         lvs_process.combined_output
     )
-    failure_reason = None if passed else "Netgen did not report an unqualified unique match"
+    failure_reason = (
+        None
+        if passed
+        else "Netgen did not report an unqualified unique match"
+    )
 
     report_path.write_text(
+        "LVS TARGETS\n"
+        "===========\n"
+        f"schematic: {schematic_netlist_path} {schematic_cell_name}\n"
+        f"layout: {layout_netlist_path} {cell_name}\n\n"
         "MAGIC EXTRACTION OUTPUT\n"
         "=======================\n"
         + extraction.process.combined_output

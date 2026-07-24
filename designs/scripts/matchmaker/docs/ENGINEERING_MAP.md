@@ -2,8 +2,7 @@
 
 This is the canonical live-state document for the engine. Read it before changing
 code. Update it instead of creating another handoff file. Detailed physical
-evidence belongs in `VALIDATION_STATUS.md`; durable architectural decisions
-belong in ADRs.
+evidence belongs in `VALIDATION_STATUS.md`; durable decisions belong in ADRs.
 
 ## Current state
 
@@ -12,21 +11,26 @@ base: main
 branch: main (direct-update workflow)
 PR: none
 PR #1-#5: merged
-remote base before this recovery: ff61776 family-composable selector architecture
-recovered change: explicit compact GF180 MOS profile and strict profile rejection
-regression evidence: lost workspace reported 100 tests; recovered source syntax checked
-physical status: compact-profile /foss rerun still required
-active checkpoint: regenerate the vertical B0 selector without inherited substrate geometry
+latest accepted physical checkpoint: vertical B0 selector, five shared nets
+latest accepted evidence date: 2026-07-24
+active checkpoint: independent base-TG and B0 schematic-to-layout Netgen LVS
 ```
 
-The original local commit `b7d80a6` never reached GitHub. ADR 0005 records the
-reconstructed equivalent. The SHA differs, but the architectural boundary is the
-same: generated transmission-gate MOS children retain conductive body ties and
-explicitly disable substrate taps, deep wells, guard rings, and dummies.
+The compact MOS profile from ADR 0005 fixed the Attempt 7 VDD-to-`VSUBS` short.
+The regenerated vertical selector is now accepted at the five-net pre-LVS
+boundary:
 
-The last physically accepted selector remains the three-net B0 checkpoint. No
-five-net selector, scaled selector, complete CDAC placement, full extraction, or
-independent LVS claim is made yet.
+```text
+Magic DRC violations: 0
+Magic extraction: passed
+shared selector net count: 5
+pre-LVS checks: passed
+visual inspection: accepted
+PMOS VDD child terminals: one shared net distinct from VSUBS
+```
+
+This is not a full LVS claim. Scaled selectors, complete CDAC placement/routing,
+full extraction, and full-CDAC LVS remain outside the demonstrated boundary.
 
 ## Source of truth
 
@@ -40,9 +44,9 @@ typed generator specification
 -> independent schematic comparison during LVS
 ```
 
-Schematics under `designs/libs/core_matchmaker/` are independent LVS references
-only. They are not hierarchy, sizing, placement, coordinate, access, or routing
-input.
+Schematics under `designs/libs/core_matchmaker/` are independent review and LVS
+references. They are not hierarchy, sizing, placement, coordinate, access, or
+routing input to MatchMaker.
 
 ## Non-negotiable invariants
 
@@ -59,18 +63,17 @@ input.
 7. Executors draw plans; they do not invent policy.
 8. Examples contain no reusable policy.
 9. DRC never proves connectivity or analog quality.
-10. Connectivity-changing work requires extraction or LVS evidence.
-11. Unsupported cases fail explicitly.
-12. Live state stays in this file; physical evidence stays in
-    `VALIDATION_STATUS.md`.
+10. Extraction and shared-net counts do not replace terminal-level inspection.
+11. Pre-LVS checks do not replace independent schematic-to-layout LVS.
+12. Unsupported cases fail explicitly.
 13. Device-family port grammar stays in family adapters; composition and route
     templates cannot inspect family-specific names.
 14. A block planner binds logical roles to reusable placement/routing primitives;
     it does not become a private geometry generator.
 15. Safety-critical primitive options are explicit. `None` is not accepted when
     it would inherit geometry-affecting gLayout defaults.
-16. A generated MOS profile is part of the physical interface because it changes
-    the primitive envelope, available escapes, and possible substrate shorts.
+16. Schematic and generated layout top-cell names are independent identities.
+    The LVS boundary must bind them explicitly rather than rename either source.
 
 ## Canonical pipeline
 
@@ -88,7 +91,8 @@ typed intent
 -> GDS
 -> Magic DRC
 -> extraction and exact connectivity
--> independent Netgen LVS
+-> independent Xschem reference netlist
+-> Netgen LVS
 ```
 
 Each module owns one translation.
@@ -126,7 +130,7 @@ placement/cdac/
   capacitor-array, transmission-gate, and selector intent/builder bindings
 
 primitives/gf180_mos_primitive_options.py
-  explicit compact MOS profile, profile validation, profile diagnostics
+  explicit compact MOS profile, validation, and diagnostics
 
 primitives/gf180_mos_primitive_factory.py
   installed-signature alias resolution and GF180 primitive invocation
@@ -149,15 +153,24 @@ routing/planners/reference_selector_topology_planner.py
 routing/routers/route_plan_executor.py
   mechanical segment and injected via execution
 
-verification/netlist/
-  exact shared-net participant checks and extracted child-interface diagnostics
+verification/netlist/xschem_schematic_netlist.py
+  headless independent-reference SPICE export from Xschem
+
+verification/lvs/cdac_leaf_targets.py
+  explicit reviewed schematic/layout top-cell binding for base TG and B0
+
+verification/lvs/magic_netgen_lvs.py
+  Magic extraction and Netgen comparison with distinct schematic/layout names
+
+examples/verification/run_cdac_leaf_lvs.py
+  orchestration only; no reusable device or geometry policy
 
 docs/adr/
-  durable architecture decisions; ADR 0005 owns compact MOS profile policy
+  durable decisions; ADR 0004 owns composition and ADR 0005 owns MOS profile
 ```
 
 Generic placement and corridor modules do not import selector net names, GF180
-port tokens, or numeric layers.
+port tokens, numeric layers, Xschem paths, or Netgen commands.
 
 ## Demonstrated physical boundary
 
@@ -172,7 +185,10 @@ Magic DRC violations: 0
 
 Capacitor plates are not routed.
 
-### Base transmission gate before compact-profile recovery
+### Base transmission gate
+
+The pre-compact-profile run established the two signal nets and body-tie access
+grammar:
 
 ```text
 NMOS: W=4 µm, L=0.28 µm
@@ -185,116 +201,88 @@ exact shared signal nets: 2
 pre-LVS checks: passed
 ```
 
-This evidence established the signal topology and measured body-tie access
-contract. It did not prove that inherited outer geometry was safe for composite
-supply escapes.
+The compact-profile base TG must be regenerated before its independent LVS run
+unless a current `/foss` output confirms the same gates.
 
-### Accepted B0 selector boundary
+### B0 selector: accepted five-net checkpoint
 
-The accepted pre-LVS selector checkpoint contains two generated TG children and
-exactly three shared nets:
-
-```text
-COMMON
-SELECT
-SELECT_BAR
-```
-
-Attempt 4 used a direct COMMON route, a clean outer SELECT route, and a single
-central SELECT_BAR trunk. It passed DRC, extraction, exact three-net
-connectivity, and visual inspection. Supply routing and independent LVS were not
-part of that accepted run.
-
-## Family-composable selector architecture
-
-ADR 0004 separates four reusable boundaries:
-
-```text
-family adapter
-  logical terminals <-> family port grammar
-
-oriented-pair composer
-  two generated children + axis/side/orientation/gap
-  -> runtime-envelope PlacementResult
-
-corridor planners
-  side bus / gap bridge / transitioned trunk
-  -> ordinary RoutePlan objects
-
-block binding
-  selector logical roles and matching constraints only
-```
-
-The active B0 topology uses a vertical `VREF_TG=R0` / `VSS_TG=R180` pair:
+The accepted structure is a vertical `VREF_TG=R0` / `VSS_TG=R180` pair:
 
 ```text
 COMMON: west met2 escapes -> two vias -> compact met3 trunk
 SELECT: west met2 side bus
 SELECT_BAR: matched east met2 side bus
-VSS: body ties plus low-reference input -> three vias -> east met3 trunk
+VSS: two body ties plus low-reference input -> three vias -> east met3 trunk
 VDD: direct met2 bridge in the true inter-child gap
 ```
 
-## Attempt 7 root cause and recovery
-
-The first `/foss` run of the vertical family-composable selector was DRC-clean
-and extracted, but only four shared child nets remained. Child-interface
-inspection showed that VDD was not merely absent: PMOS `vdd_*` merged into
-`VSUBS`.
-
-The PMOS supply escape crossed an inherited outer substrate ring. The former
-profile requested `with_tie=True` but left other geometry-affecting options as
-`None`, allowing installed gLayout defaults to add expansive geometry.
-
-ADR 0005 therefore requires this exact generated-TG leaf profile:
+Observed on 2026-07-24:
 
 ```text
-conductive body ties: on
-substrate taps: off
-deep wells: off
-guard rings: off
-dummies: off on both sides
+VSS length: 37.44
+VSS vias: 3
+VDD length: 10.86
+VDD vias: 0
+Magic DRC violations: 0
+Magic extraction: passed
+shared selector net count: 5
+pre-LVS checks: passed
 ```
 
-`TransmissionGateLayoutIntent` rejects both inherited and conflicting profiles
-before geometry generation. The MOS diagnostic prints the selected profile and a
-normalized bounding-box size so envelope changes are visible.
+The child-interface report showed both PMOS VDD terminals on one shared unnamed
+net while `VSUBS` remained separate. Visual inspection accepted the compact
+vertical arrangement and found no inherited outer substrate-ring crossing.
 
-This is an architecture correction, not a physical acceptance claim.
+This closes the selector at the five-net pre-LVS boundary. Do not redesign or
+compact it before leaf LVS.
 
 ## Exact next verification gate
 
-Run in `/foss`:
+First ensure the latest generated GDS files exist:
 
 ```bash
-python scripts/matchmaker/examples/diagnostics/inspect_gf180_transmission_gate_devices.py
 python scripts/matchmaker/examples/placement/generate_gf180_transmission_gate.py
 python scripts/matchmaker/examples/placement/generate_gf180_reference_selector.py
 ```
 
-Require:
+Then run independent reference netlisting and LVS:
 
-```text
-profile: ties on; substrate taps, deep wells, guard rings, dummies off
-base TG: zero DRC violations, extraction passed, exact two signal nets
-selector placement: compact vertical R0/R180 pair
-SELECT and SELECT_BAR: matched two-bend side buses, zero vias
-COMMON: two west-side transitions
-VSS: three east/gap-side transitions
-VDD: direct bridge confined to the inter-child gap
-selector: zero DRC violations, extraction passed, exactly five shared child nets
-child-interface report: VDD distinct from VSUBS
-visual inspection: no inherited outer ring crossing or full-perimeter loops
+```bash
+python scripts/matchmaker/examples/verification/run_cdac_leaf_lvs.py --target all
 ```
 
-After this passes, export independent schematic SPICE references and run Netgen
-LVS on the base TG and B0 selector before scaling B1/B2/B3.
-
-## Work after selector closure
+The new verification boundary performs:
 
 ```text
-1. pass base-TG and B0 selector Netgen LVS
-2. validate B1/B2/B3 through the same generator and LVS flow
+7D_tg_switch.sch
+  -> Xschem LVS SPICE netlist, top cell 7D_tg_switch
+  -> compare with layout top gf180_cdac_transmission_gate_demo
+
+7D_ref_sel_2to1.sch
+  -> Xschem LVS SPICE netlist, top cell 7D_ref_sel_2to1
+  -> compare with layout top gf180_cdac_b0_reference_selector_demo
+```
+
+Acceptance requires both runs to report:
+
+```text
+schematic netlist passed: True
+LVS passed: True
+Netgen: Circuits match uniquely.
+no property errors
+no port errors
+```
+
+A first LVS mismatch is diagnostic evidence, not permission to alter geometry
+immediately. Inspect device counts, pin order, model names, source/drain
+equivalence, hierarchy flattening, and property normalization in the report
+before changing layout or schematic.
+
+## Work after leaf LVS
+
+```text
+1. record base-TG and B0 Netgen reports
+2. validate B1/B2/B3 selectors through the same generator and LVS flow
 3. define complete CDAC macro placement intent
 4. place capacitor array, four selectors, and reset TG
 5. run whole-placement Magic DRC
@@ -306,14 +294,13 @@ LVS on the base TG and B0 selector before scaling B1/B2/B3.
 ## Known debt
 
 ```text
-compact-profile base TG and vertical five-net B0 require /foss rerun
-scaled B1/B2/B3 selectors are not validated
+base-TG and B0 independent Netgen LVS are not yet recorded
+scaled B1/B2/B3 selectors are not physically validated
 legacy MOS placement has not been generalized beyond the current TG builder
 generic transitioned-tree planning has no obstacle-aware candidate search
 GF180 transition execution currently covers centered met2/met3 via stacks
 composite external-pin escape planning is not generalized
 multi-terminal complete-CDAC topology planning is absent
 committed routes are not yet typed physical resources
-independent schematic LVS has not passed
 stable logical identity is not preserved through extraction end-to-end
 ```

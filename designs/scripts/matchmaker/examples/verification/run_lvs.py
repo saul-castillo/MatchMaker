@@ -10,8 +10,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run Magic extraction and Netgen LVS for a generated cell."
     )
-    parser.add_argument("cell_name")
+    parser.add_argument("cell_name", help="Generated layout top-cell name.")
     parser.add_argument("schematic_netlist", type=Path)
+    parser.add_argument(
+        "--schematic-cell-name",
+        help=(
+            "Top subcircuit name in the schematic netlist. Defaults to the "
+            "generated layout cell name."
+        ),
+    )
     parser.add_argument(
         "--designs-root",
         type=Path,
@@ -24,11 +31,16 @@ def main() -> int:
         gds_path=paths.final_gds,
         schematic_netlist_path=args.schematic_netlist,
         cell_name=args.cell_name,
+        schematic_cell_name=args.schematic_cell_name,
         layout_netlist_path=paths.extracted_netlist,
         report_path=paths.lvs_report,
     )
 
-    print(f"cell: {args.cell_name}")
+    print(f"layout cell: {args.cell_name}")
+    print(
+        "schematic cell: "
+        f"{args.schematic_cell_name or args.cell_name}"
+    )
     print(f"LVS passed: {result.passed}")
     print(f"layout netlist: {result.layout_netlist_path}")
     print(f"LVS report: {result.report_path}")
